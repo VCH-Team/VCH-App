@@ -1,0 +1,18 @@
+﻿# Default — nobody without explicit assignment
+*                         @your-director-handle
+
+# Physics
+physics/                  @me-lead-handle
+materials/                @me-lead-handle
+
+# Application
+gui/                      @ce-lead-handle
+app/                      @ce-lead-handle
+installer/                @ce-lead-handle
+io/output.py              @ce-lead-handle
+
+# Director territory
+main.py                   @your-director-handle
+docs/contracts/           @your-director-handle
+docs/decisions/           @your-director-handle
+.github/                  @your-director-handle
