@@ -1,0 +1,25 @@
+﻿# Project-specific
+materials/cache/*.npz
+materials/plots/*.png
+out/
+baseline/*
+!baseline/.gitkeep
+*.log
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
