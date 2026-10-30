@@ -1,3 +1,9 @@
+import os
+import hashlib
+import pandas as pd
+import numpy as np
+import matplotlib
+
 def _cache_valid(cache_file, current_hash):
     if not os.path.exists(cache_file):
         return False
