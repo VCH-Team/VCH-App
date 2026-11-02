@@ -8,7 +8,7 @@
 
 ## 1. Project Overview
 
-VCH (Vessel-Coil-Hydronic) is a two-part project built around one idea: an engineer should be able to understand a thermal-hydraulic system, simulate it, and then design its control system with confidence.
+VCH (Velocity-Constrained-Hydronic) is a two-part project built around one idea: an engineer should be able to understand a thermal-hydraulic system, simulate it, and then design its control system with confidence.
 
 | Deliverable | Purpose | Status |
 |---|---|---|
