@@ -51,7 +51,7 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
     dLdT = np.gradient(latent_grid, T_grid)
     cp_eff_grid = cp_sens_grid + dLdT
     
-    # Clamp to prevent non-monotonic enthalpy (which crashes the solver)
+    # Clamp to prevent non-monotonic enthalpy
     min_cp = 0.05 * cp_sens_grid
     cp_eff_grid = np.maximum(cp_eff_grid, min_cp)
     
@@ -61,9 +61,8 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
         cp_mid = 0.5 * (cp_eff_grid[i-1] + cp_eff_grid[i])
         H_grid[i] = H_grid[i-1] + cp_mid * (T_grid[i] - T_grid[i-1])
     H_grid -= H_grid[0]
-
-    # Solid fraction — 1 below solidus, 0 above liquidus, linear in between.
-    # For single-phase fluids (no melt band), fs = 0 everywhere.
+    
+    # Solid fraction
     fs_grid = np.zeros(n_points)
     if not np.isnan(T_ms) and not np.isnan(T_me):
         below = T_grid <= T_ms
@@ -73,7 +72,7 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
         fs_grid[above] = 0.0
         fs_grid[between] = (T_me - T_grid[between]) / (T_me - T_ms)
     
-        return {
+    return {
         'T_grid': T_grid,
         'rho_grid': rho_grid,
         'cp_sens_grid': cp_sens_grid,
@@ -81,7 +80,7 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
         'k_grid': k_grid,
         'mu_grid': mu_grid,
         'H_grid': H_grid,
-        'fs_grid': fs_grid,          
+        'fs_grid': fs_grid,
         'T_ms': T_ms,
         'T_me': T_me
     }
