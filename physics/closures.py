@@ -1,10 +1,21 @@
 # physics/closures.py
 import numpy as np
 
-def is_flowable(T, h, mat, cfg) -> bool:
-    """Placeholder for Phase 7."""
-    # For now, just return True (everything flows)
-    return True
+def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc):
+    if np.isnan(T_ms) or np.isnan(T_me):
+        return True
+        
+    H_solid = np.interp(T_ms, T_grid, H_grid)
+    H_liquid = np.interp(T_me, T_grid, H_grid)
+    
+    if H_liquid > H_solid:
+        frac = (H - H_solid) / (H_liquid - H_solid)
+        frac = min(1.0, max(0.0, frac))
+    else:
+        frac = 1.0
+        
+    mu = np.interp(T, T_grid, mu_grid)
+    return (frac >= thresh_liq) and (mu <= thresh_visc)
 
 def h_internal(m_dot, d_in, d_coil_actual, rho, cp, mu, k) -> float:
     """Internal convection coefficient. (To be copied from legacy/heat_transfer.py later)."""
