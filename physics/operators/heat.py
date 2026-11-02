@@ -42,40 +42,42 @@ def _heat_kernel(T, k, nbr, A_face, d_face, coil_w, wall_area, U_wall, T_amb, q_
             q_wall = U_wall * wall_area[c] * (T[c] - T_amb)
             dH[c] -= q_wall * dt
 
-def apply(grid, state, mat, coil_w, cfg, dt, R_coil, n_turns):
+def apply(grid, state, mat, coil_w, cfg, dt, R_coil, n_turns, is_heating=True):
     """
     Python wrapper that calculates the coil heat and calls the kernel.
     """
-    # 1. Calculate the average tank temperature over the coil band
-    weight_sum = 0.0
-    T_coil_avg = 0.0
-    for c in range(grid.N):
-        if coil_w[c] > 1e-6 and state.m[c] > 1e-6:
-            T_coil_avg += state.T[c] * coil_w[c]
-            weight_sum += coil_w[c]
-            
     q_total = 0.0
-    if weight_sum > 0.0:
-        T_coil_avg /= weight_sum
-        H_coil_avg = np.interp(T_coil_avg, mat["T_grid"], mat["H_grid"])
-        
-        m_dot = cfg["flow_m3h"] * np.interp(cfg["T_water_in"], cfg["T_water_arr"], cfg["rho_water_arr"]) / 3600.0
-        A_coil = 2.0 * np.pi * R_coil * n_turns * cfg["d_out"]
-        
-        q_total = closures.calc_Q(
-            m_dot, T_coil_avg, H_coil_avg, cfg["T_water_in"], cfg["d_in"], cfg["d_out"], cfg["R_f_out"],
-            A_coil, 2.0*R_coil,
-            cfg["T_water_arr"], cfg["rho_water_arr"], cfg["cp_water_arr"], cfg["mu_water_arr"], cfg["k_water_arr"],
-            cfg["T_tube_arr"], cfg["k_tube_arr"],
-            mat["T_grid"], mat["H_grid"], mat["rho_grid"], mat["cp_sens_grid"], mat["k_grid"], mat["mu_grid"],
-            mat["T_ms"], mat["T_me"], cfg["thresh_liq"], cfg["thresh_visc"],
-            cfg["beta_liq"], cfg["dT_natural"]
-        )
-        
-        # Track the cumulative energy added by the coil
-        state.E_coil_cum += q_total * dt
+    
+    # 1. Calculate the coil heat ONLY if we are in the heating phase
+    if is_heating:
+        weight_sum = 0.0
+        T_coil_avg = 0.0
+        for c in range(grid.N):
+            if coil_w[c] > 1e-6 and state.m[c] > 1e-6:
+                T_coil_avg += state.T[c] * coil_w[c]
+                weight_sum += coil_w[c]
+                
+        if weight_sum > 0.0:
+            T_coil_avg /= weight_sum
+            H_coil_avg = np.interp(T_coil_avg, mat["T_grid"], mat["H_grid"])
+            
+            m_dot = cfg["flow_m3h"] * np.interp(cfg["T_water_in"], cfg["T_water_arr"], cfg["rho_water_arr"]) / 3600.0
+            A_coil = 2.0 * np.pi * R_coil * n_turns * cfg["d_out"]
+            
+            q_total = closures.calc_Q(
+                m_dot, T_coil_avg, H_coil_avg, cfg["T_water_in"], cfg["d_in"], cfg["d_out"], cfg["R_f_out"],
+                A_coil, 2.0*R_coil,
+                cfg["T_water_arr"], cfg["rho_water_arr"], cfg["cp_water_arr"], cfg["mu_water_arr"], cfg["k_water_arr"],
+                cfg["T_tube_arr"], cfg["k_tube_arr"],
+                mat["T_grid"], mat["H_grid"], mat["rho_grid"], mat["cp_sens_grid"], mat["k_grid"], mat["mu_grid"],
+                mat["T_ms"], mat["T_me"], cfg["thresh_liq"], cfg["thresh_visc"],
+                cfg["beta_liq"], cfg["dT_natural"]
+            )
+            
+            # Track the cumulative energy added by the coil
+            state.E_coil_cum += q_total * dt
 
-        # 2. Wall U-value (simplified for Phase 3)
+    # 2. Wall U-value (simplified for Phase 3)
     if cfg["h_air"] > 0:
         R_conv = 1.0 / cfg["h_air"]
         R_wall = cfg["t_wall"] / 16.0

@@ -21,9 +21,24 @@ def h_internal(m_dot, d_in, d_coil_actual, rho, cp, mu, k) -> float:
     """Internal convection coefficient. (To be copied from legacy/heat_transfer.py later)."""
     return 100.0 # Dummy value
 
-def h_external(T_cell, T_coil_fluid, rho, cp, k, mu, d_out, cfg) -> float:
-    """External convection coefficient. (To be copied from legacy)."""
-    return 50.0 # Dummy value
+def h_external(T_oil, H_oil, T_grid, H_grid, rho_grid, cp_grid, k_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc, beta, dT_natural, d_out):
+    flowable = is_flowable(T_oil, H_oil, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc)
+    if not flowable:
+        return 5.0
+        
+    rho = np.interp(T_oil, T_grid, rho_grid)
+    cp  = np.interp(T_oil, T_grid, cp_grid)
+    k   = np.interp(T_oil, T_grid, k_grid)
+    mu  = np.interp(T_oil, T_grid, mu_grid)
+    
+    nu = mu / max(1e-6, rho)
+    alpha = k / max(1e-6, rho * cp)
+    Pr = nu / max(1e-6, alpha)
+    
+    d_char = d_out
+    Ra = 9.81 * beta * dT_natural * (d_char**3) / max(1e-6, nu * alpha)
+    Nu = (0.60 + (0.387 * Ra**(1.0/6.0)) / (1.0 + (0.559/max(1e-6, Pr))**(9.0/16.0))**(8.0/27.0))**2
+    return Nu * k / d_char
 
 def nu_eff_buoyancy(Ra) -> float:
     """Stub for Phase 1. Returns 1.0 (no extra buoyancy)."""
