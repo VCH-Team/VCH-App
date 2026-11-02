@@ -78,10 +78,14 @@ class State:
         h_start = float(np.interp(T_start, mat["T_grid"], mat["H_grid"]))
 
         V_tank = float(self.V.sum())
-        if cfg.get("fill_to_max", True) or cfg.get("M_fluid") is None:
+        M_target = cfg.get("M_fluid")
+        
+        # If M_fluid is None or 0, fill the whole tank. Otherwise, use the requested mass.
+        if M_target is None or M_target <= 0:
             M_target = rho_start * V_tank
         else:
-            M_target = float(cfg["M_fluid"])
+            M_target = float(M_target)
+        
         V_target = M_target / rho_start
         f = min(1.0, V_target / V_tank)
 
