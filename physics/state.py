@@ -100,6 +100,7 @@ class State:
         self.fill_fraction = f
         self.M_requested = M_target
         self.M_initial = float(self.m.sum())
+        self.H_initial = float(self.H.sum())
 
     def update_derived(self, mat):
         T_ms = float(mat["T_ms"])
@@ -135,6 +136,6 @@ class State:
             setattr(new, attr, getattr(self, attr).copy())
         for attr in self.CUMULATIVE:
             setattr(new, attr, getattr(self, attr))
-        for attr in ("T_start", "h_start", "fill_fraction", "M_requested", "M_initial"):
+        for attr in ("T_start", "h_start", "fill_fraction", "M_requested", "M_initial", "H_initial"):
             setattr(new, attr, getattr(self, attr))
         return new
