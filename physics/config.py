@@ -269,3 +269,12 @@ def validate(user_cfg, available_materials=None):
         if cfg["n_samples"] > max(2, int(cfg["L_avail"] / cfg["d_out"])):
             errors["n_samples"] = "more turn samples than turns that fit in L_avail"
     return cfg, errors
+
+def with_defaults(cfg):
+    """
+    Takes a partial config dictionary and fills in any missing keys 
+    using the default values from the DEFAULTS dictionary.
+    """
+    merged = {k: v["default"] for k, v in DEFAULTS.items()}
+    merged.update(cfg)
+    return merged
