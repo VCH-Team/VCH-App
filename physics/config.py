@@ -175,6 +175,15 @@ DEFAULTS = {
     "snapshot_interval_hr": {
         "default": 0.5, "type": float, "range": (0.01, 10.0),
         "group": "numerics", "label": "Snapshot interval (hours)",
+
+        "dt_min": {
+        "default": 0.1, "type": float, "range": (0.001, 10.0),
+        "group": "numerics", "label": "Minimum timestep (s)",
+    },
+    "dt_max": {
+        "default": 10.0, "type": float, "range": (1.0, 60.0),
+        "group": "numerics", "label": "Maximum timestep (s)",
+    },
     },
 }
 

@@ -24,6 +24,7 @@ def setup_loop():
         "k_water_arr": np.full(10, 0.6),
         "T_tube_arr": np.linspace(0, 100, 10),
         "k_tube_arr": np.full(10, 16.0),
+        "snapshot_interval_hr": 0.002,
     })
 
     mat = materials.load(materials.list_available()[0])

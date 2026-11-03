@@ -6,9 +6,12 @@ from numba import njit
 def nu_eff_buoyancy(Ra):
     if Ra < 1e4:
         return 1.0
+        
     Pr = 5.0
     nu_lam = 0.68 + (0.67 * Ra**(1/4)) / (1 + (0.492/Pr)**(9/16))**(4/9)
-    return max(1.0, nu_lam)
+    
+    # HARD CAP: Convection can't be more than 100x pure conduction
+    return min(100.0, max(1.0, nu_lam)) 
 
 def cd_reynolds(Re):
     if Re < 10:

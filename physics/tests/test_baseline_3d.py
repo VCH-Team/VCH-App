@@ -14,9 +14,10 @@ def setup_full_sim():
         "M_fluid": 100.0, "T_start": 20.0, "T_amb_mid": 20.0,
         "T_water_in": 80.0, "flow_m3h": 1.0,
         "dt_sec": 1.0, "t_window_hr": 0.01,
+        "snapshot_interval_hr": 0.002, # <--- ADD THIS LINE
         "N_cycles": 1,
         "simulate_fill": False, "simulate_drain": False,
-        "coil_clearance_bottom": 0.0, # <--- ADD THIS LINE to put the coil at the bottom
+        "coil_clearance_bottom": 0.0,
         "T_water_arr": np.linspace(0, 100, 10),
         "rho_water_arr": np.full(10, 1000.0),
         "cp_water_arr": np.full(10, 4180.0),
