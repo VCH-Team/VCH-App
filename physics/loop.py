@@ -40,8 +40,8 @@ def run_chunk(grid, state, mat, cfg, coil_segs, drain_cell_idx, fill_cell_idx, t
         
         # 4. Snapshots
         if t_current >= next_snap_time - 1e-3:
-            # Create a dummy snapshot path for now
-            snapshots.append(f"snapshot_{t_current/3600.0:.2f}.npz")
+            snap_path = state.save_snapshot(grid, outdir, t_current / 3600.0)
+            snapshots.append(snap_path)
             next_snap_time += snap_interval_sec
             
         # 5. Progress

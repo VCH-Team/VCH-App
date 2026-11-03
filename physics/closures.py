@@ -21,7 +21,7 @@ def cd_reynolds(Re):
     else:
         return 0.6
 
-def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, fs_lock, thresh_visc):
+def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc, fs_lock=0.8):
     if np.isnan(T_ms) or np.isnan(T_me):
         return True
         
@@ -36,8 +36,12 @@ def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, fs_lock, thresh_visc)
         
     fs = 1.0 - frac
     
+    # If it's almost entirely solid, it cannot flow
+    if fs >= fs_lock:
+        return False
+        
     mu = np.interp(T, T_grid, mu_grid)
-    return (fs <= fs_lock) and (mu <= thresh_visc)
+    return (frac >= thresh_liq) and (mu <= thresh_visc)
 
 def k_face(k_i, k_j, T_i, T_j, rho_i, rho_j):
     return 2.0 * k_i * k_j / (k_i + k_j)

@@ -39,7 +39,7 @@ def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
             c_top = col_cells[start + q + 1]
             
             # Skip if either cell is locked solid
-            if fs[c_bot] >= fs_lock or fs[c_top] >= fs_lock:
+            if fs[c_bot] >= fs_lock:
                 continue
                 
             if m[c_bot] <= 1e-9:

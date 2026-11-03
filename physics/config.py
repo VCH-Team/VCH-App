@@ -184,6 +184,11 @@ DEFAULTS = {
         "default": 10.0, "type": float, "range": (1.0, 60.0),
         "group": "numerics", "label": "Maximum timestep (s)",
     },
+
+        "fs_lock": {
+        "default": 0.8, "type": float, "range": (0.0, 1.0),
+        "group": "physics", "label": "Solid fraction lock threshold",
+    },
     },
 }
 
