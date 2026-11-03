@@ -62,7 +62,7 @@ class State:
 
         self.m = np.zeros(n)
         self.H = np.zeros(n)
-        
+        self.T_coil_out = 0
         for a in self.DERIVED:
             setattr(self, a, np.zeros(n))
             
@@ -136,6 +136,6 @@ class State:
             setattr(new, attr, getattr(self, attr).copy())
         for attr in self.CUMULATIVE:
             setattr(new, attr, getattr(self, attr))
-        for attr in ("T_start", "h_start", "fill_fraction", "M_requested", "M_initial", "H_initial"):
+        for attr in ("T_start", "h_start", "fill_fraction", "M_requested", "M_initial", "H_initial", "T_coil_out"):
             setattr(new, attr, getattr(self, attr))
         return new

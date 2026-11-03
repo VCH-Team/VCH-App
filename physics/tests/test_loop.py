@@ -16,6 +16,7 @@ def setup_loop():
         "T_water_in": 80.0, "flow_m3h": 1.0,
         "dt_sec": 1.0,
         "simulate_fill": False, "simulate_drain": False,
+        "coil_clearance_bottom": 0.0, # <--- ADD THIS LINE
         "T_water_arr": np.linspace(0, 100, 10),
         "rho_water_arr": np.full(10, 1000.0),
         "cp_water_arr": np.full(10, 4180.0),
@@ -24,6 +25,7 @@ def setup_loop():
         "T_tube_arr": np.linspace(0, 100, 10),
         "k_tube_arr": np.full(10, 16.0),
     })
+
     mat = materials.load(materials.list_available()[0])
     g = grid_module.Grid.build_3d(cfg)
     s = state_module.State(g, mat, cfg)
@@ -31,20 +33,20 @@ def setup_loop():
     # Fake a coil at the bottom of the tank where the fluid actually is
     coil_w = np.zeros(g.N)
     lowest_cell = np.argmin(g.zc)
-    coil_w[lowest_cell] = 1.0  
-    
-    return cfg, g, s, mat, coil_w
+    from physics.operators import coil # add at top
+    coil_segs = coil.build_coil_segments(g, cfg, R_coil=0.4, n_turns=2)
+    return cfg, g, s, mat, coil_segs
 
 def test_loop_runs_without_crashing(setup_loop):
     """Run 1 minute of simulation. It should complete and conserve mass."""
-    cfg, g, s, mat, coil_w = setup_loop
+    cfg, g, s, mat, coil_segs = setup_loop
     
     initial_m = s.total_mass()
     s.H_initial = s.total_enthalpy()
     
     # Run just 0.016 hours (~1 minute) to test
     # Pass a realistic coil radius and turns so heat is actually transferred
-    loop.run_chunk(g, s, mat, cfg, coil_w, -1, -1, R_coil=0.4, n_turns=2, t_window_hr=0.016)
+    loop.run_chunk(g, s, mat, cfg, coil_segs, -1, -1, t_window_hr=0.016)
     
     # Mass shouldn't have changed since drain/fill are off
     assert np.isclose(s.total_mass(), initial_m)
