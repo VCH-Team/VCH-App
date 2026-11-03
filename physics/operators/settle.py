@@ -3,7 +3,7 @@ import numpy as np
 from numba import njit, prange
 
 @njit(parallel=True, cache=True)
-def _settle_kernel(m, H, V, rho, col_cells, col_start, col_len):
+def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
     n_cols = col_start.shape[0]
     
     for col in prange(n_cols):
@@ -11,11 +11,14 @@ def _settle_kernel(m, H, V, rho, col_cells, col_start, col_len):
         n = col_len[col]
         
         # PASS 1: Downward (Gravity)
-        # Start from the bottom and pull mass down from the cell above
         for q in range(n - 1):
             c_bot = col_cells[start + q]
             c_top = col_cells[start + q + 1]
             
+            # Skip if either cell is locked solid
+            if fs[c_bot] >= fs_lock or fs[c_top] >= fs_lock:
+                continue
+                
             if m[c_top] <= 1e-9:
                 continue
                 
@@ -31,11 +34,14 @@ def _settle_kernel(m, H, V, rho, col_cells, col_start, col_len):
                 H[c_top] -= moved * h_spec
                 
         # PASS 2: Upward (Thermal Expansion)
-        # If the cell expanded, push the excess mass up
         for q in range(n - 1):
             c_bot = col_cells[start + q]
             c_top = col_cells[start + q + 1]
             
+            # Skip if either cell is locked solid
+            if fs[c_bot] >= fs_lock or fs[c_top] >= fs_lock:
+                continue
+                
             if m[c_bot] <= 1e-9:
                 continue
                 
@@ -50,17 +56,10 @@ def _settle_kernel(m, H, V, rho, col_cells, col_start, col_len):
                 H[c_top] += excess * h_spec
 
 def apply(grid, state, mat, cfg):
-    """
-    Packs columns bottom-to-top (gravity + thermal expansion).
-    """
-    if grid.N == 0:
-        return
-        
+    if grid.N == 0: return
     state.update_derived(mat)
-    
     _settle_kernel(
-        state.m, state.H, state.V, state.rho,
-        grid.col_cells, grid.col_start, grid.col_len
+        state.m, state.H, state.V, state.rho, state.fs,
+        grid.col_cells, grid.col_start, grid.col_len, cfg["fs_lock"]
     )
-    
     state.update_derived(mat)
