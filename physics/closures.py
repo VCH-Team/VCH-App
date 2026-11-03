@@ -1,6 +1,9 @@
 # physics/closures.py
 import numpy as np
+import numba as nb
+from numba import njit
 
+@nb.njit(cache=True)
 def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc):
     if np.isnan(T_ms) or np.isnan(T_me):
         return True
@@ -40,13 +43,32 @@ def h_external(T_oil, H_oil, T_grid, H_grid, rho_grid, cp_grid, k_grid, mu_grid,
     Nu = (0.60 + (0.387 * Ra**(1.0/6.0)) / (1.0 + (0.559/max(1e-6, Pr))**(9.0/16.0))**(8.0/27.0))**2
     return Nu * k / d_char
 
-def nu_eff_buoyancy(Ra) -> float:
-    """Stub for Phase 1. Returns 1.0 (no extra buoyancy)."""
-    return 1.0
+@njit(cache=True)
+def nu_eff_buoyancy(Ra):
+    """
+    Effective Nusselt number for natural convection on a vertical face.
+    Based on Churchill-Chu correlation for a vertical plate.
+    """
+    if Ra < 1e4:
+        return 1.0  # Pure conduction
+        
+    Pr = 5.0  # Approximate Prandtl number for oils/PCMs
+    # Churchill-Chu for vertical plate
+    nu_lam = 0.68 + (0.67 * Ra**(1/4)) / (1 + (0.492/Pr)**(9/16))**(4/9)
+    return max(1.0, nu_lam)
 
-def cd_reynolds(Re) -> float:
-    """Stub for Phase 1. Returns 0.6."""
-    return 0.6
+def cd_reynolds(Re):
+    """
+    Discharge coefficient as a function of Reynolds number.
+    Smooth transition from laminar to turbulent orifice flow.
+    """
+    if Re < 10:
+        return 0.1  # Very thick, barely flows
+    elif Re < 100:
+        # Laminar transition
+        return 0.1 + (0.5 * (Re - 10) / 90.0)
+    else:
+        return 0.6  # Fully turbulent
 
 def k_face(k_i, k_j, T_i, T_j, rho_i, rho_j, cfg) -> float:
     """Harmonic mean for conduction."""
