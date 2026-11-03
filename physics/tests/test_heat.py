@@ -26,27 +26,23 @@ def setup_heat():
     # AUDIT FIX: resync H_initial so audit sees our modified starting point
     s.H_initial = s.total_enthalpy()
     
-    coil_w = np.zeros(g.N)
-    return cfg, g, s, mat, coil_w
+    coil_segs = None # <--- No coil for the conduction test
+    return cfg, g, s, mat, coil_segs
 
 def test_conduction_conserves_energy(setup_heat):
-    cfg, g, s, mat, coil_w = setup_heat
-    
+    cfg, g, s, mat, coil_segs = setup_heat
     initial_H = s.total_enthalpy()
     
-    # Run one step of heat
-    heat.apply(g, s, mat, coil_w, cfg, dt=1.0, R_coil=0.0, n_turns=0)
+    # New signature: heat.apply(grid, state, mat, coil_segs, cfg, dt)
+    heat.apply(g, s, mat, coil_segs, cfg, dt=1.0)
     
-    # Total energy should not change (only moved)
     final_H = s.total_enthalpy()
     assert np.isclose(initial_H, final_H, rtol=1e-5)
-    
-    # The hot spot should cool down, neighbors should heat up
     assert s.T[0] < 100.0
 
 def test_audit_still_passes(setup_heat):
-    cfg, g, s, mat, coil_w = setup_heat
-    heat.apply(g, s, mat, coil_w, cfg, dt=1.0, R_coil=0.0, n_turns=0)
+    cfg, g, s, mat, coil_segs = setup_heat
+    heat.apply(g, s, mat, coil_segs, cfg, dt=1.0)
     
     res = audit.evaluate(s)
     assert abs(res["m_resid"]) < 1e-12
