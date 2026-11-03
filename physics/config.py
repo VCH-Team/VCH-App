@@ -171,6 +171,11 @@ DEFAULTS = {
     "n_samples": dict(group="numerics", label="Turn samples per radius", type="int",
                       default=10, min=2, max=200,
                       help="Also cannot exceed L_avail / d_out turns."),
+    # ------------------------------------------------------------ snapshots
+    "snapshot_interval_hr": {
+        "default": 0.5, "type": float, "range": (0.01, 10.0),
+        "group": "numerics", "label": "Snapshot interval (hours)",
+    },
 }
 
 

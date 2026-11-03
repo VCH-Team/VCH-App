@@ -40,13 +40,19 @@ def setup_loop():
 def test_loop_runs_without_crashing(setup_loop):
     """Run 1 minute of simulation. It should complete and conserve mass."""
     cfg, g, s, mat, coil_segs = setup_loop
+    import tempfile
     
     initial_m = s.total_mass()
     s.H_initial = s.total_enthalpy()
     
-    # Run just 0.016 hours (~1 minute) to test
-    # Pass a realistic coil radius and turns so heat is actually transferred
-    loop.run_chunk(g, s, mat, cfg, coil_segs, -1, -1, t_window_hr=0.016)
+    # We need a temporary directory to dump the snapshots into
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loop.run_chunk(
+            g, s, mat, cfg, coil_segs, -1, -1, 
+            t_window_hr=0.016, 
+            outdir=tmpdir, 
+            t_start_hr=0.0
+        )
     
     # Mass shouldn't have changed since drain/fill are off
     assert np.isclose(s.total_mass(), initial_m)
@@ -58,3 +64,12 @@ def test_loop_runs_without_crashing(setup_loop):
     
     # The tank should have warmed up slightly from the coil
     assert s.total_enthalpy() > s.H_initial
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        loop.run_chunk(
+            g, s, mat, cfg, coil_segs, -1, -1,
+            t_window_hr=0.016,
+            outdir=tmpdir,
+            t_start_hr=0.0
+        )

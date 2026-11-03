@@ -138,4 +138,16 @@ class State:
             setattr(new, attr, getattr(self, attr))
         for attr in ("T_start", "h_start", "fill_fraction", "M_requested", "M_initial", "H_initial", "T_coil_out"):
             setattr(new, attr, getattr(self, attr))
-        return new
+        return new   
+
+    def save_snapshot(self, outdir, t_hr, res):
+        """Saves the 3D grid to an .npz file for the viewer."""
+        import os
+        snap_dir = os.path.join(outdir, "snapshots")
+        os.makedirs(snap_dir, exist_ok=True)
+        
+        np.savez_compressed(
+            os.path.join(snap_dir, f"snap_{t_hr:05.2f}.npz"),
+            T=self.T, fill=self.fill, m=self.m, t_hr=t_hr, res=res
+        )
+        return os.path.join("snapshots", f"snap_{t_hr:05.2f}.npz")
