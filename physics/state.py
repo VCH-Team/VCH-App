@@ -4,10 +4,10 @@ from numba import njit, prange
 
 M_EPS = 1e-12
 
-@njit(parallel=True, cache=True)
+@njit(cache=True)
 def _initial_fill(m, H, V, col_cells, col_start, col_len, f, rho_start, h_start):
     n_cols = col_start.shape[0]
-    for col in prange(n_cols):
+    for col in range(n_cols):
         s = col_start[col]
         n = col_len[col]
         col_vol = 0.0
@@ -27,11 +27,11 @@ def _initial_fill(m, H, V, col_cells, col_start, col_len, f, rho_start, h_start)
                 m[c] = 0.0
             H[c] = m[c] * h_start
 
-@njit(parallel=True, cache=True)
+@njit(cache=True)
 def _derive(m, H, V, h_empty, has_melt, H_solid, H_liquid,
             T_grid, H_grid, rho_grid, k_grid, mu_grid, cp_eff_grid,
             T, rho, k, mu, fs, cp_eff, cap, fill):
-    for c in prange(m.shape[0]):
+    for c in range(m.shape[0]):
         h = H[c] / m[c] if m[c] > M_EPS else h_empty
         Tc = np.interp(h, H_grid, T_grid)
         T[c] = Tc
@@ -138,4 +138,28 @@ class State:
             setattr(new, attr, getattr(self, attr))
         for attr in ("T_start", "h_start", "fill_fraction", "M_requested", "M_initial", "H_initial", "T_coil_out"):
             setattr(new, attr, getattr(self, attr))
-        return new
+        return new   
+
+    def restore(self, backup, mat):
+        """Restores state from a backup copy (used for step rejection)."""
+        self.m[:] = backup.m
+        self.H[:] = backup.H
+        self.m_in_cum = backup.m_in_cum
+        self.m_out_cum = backup.m_out_cum
+        self.H_in_cum = backup.H_in_cum
+        self.H_out_cum = backup.H_out_cum
+        self.E_coil_cum = backup.E_coil_cum
+        self.E_loss_cum = backup.E_loss_cum
+        self.update_derived(mat)
+
+    def save_snapshot(self, outdir, t_hr, res):
+        """Saves the 3D grid to an .npz file for the viewer."""
+        import os
+        snap_dir = os.path.join(outdir, "snapshots")
+        os.makedirs(snap_dir, exist_ok=True)
+        
+        np.savez_compressed(
+            os.path.join(snap_dir, f"snap_{t_hr:05.2f}.npz"),
+            T=self.T, fill=self.fill, m=self.m, t_hr=t_hr, res=res
+        )
+        return os.path.join("snapshots", f"snap_{t_hr:05.2f}.npz")

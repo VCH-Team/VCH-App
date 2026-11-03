@@ -63,15 +63,13 @@ def march(grid, state, mat, cfg, dt, coil_segs, is_heating=True):
     T_fluid = T_in
     
     for c in coil_segs.cells:
-        # Skip if the cell is empty (dry coil)
         if state.m[c] <= 1e-6:
             continue
             
-        T_cell = state.T[c]
+        T_cell = state.T[c] 
         
-        # If fluid is colder than the cell, stop (fluid can't heat the tank above its own temp)
         if T_fluid <= T_cell + 1e-3:
-            continue
+            break 
             
         H_cell = state.H[c] / state.m[c]
         

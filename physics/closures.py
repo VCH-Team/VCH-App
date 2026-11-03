@@ -1,10 +1,27 @@
 # physics/closures.py
 import numpy as np
-import numba as nb
 from numba import njit
 
-@nb.njit(cache=True)
-def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc):
+@njit(cache=True)
+def nu_eff_buoyancy(Ra):
+    if Ra < 1e4:
+        return 1.0
+        
+    Pr = 5.0
+    nu_lam = 0.68 + (0.67 * Ra**(1/4)) / (1 + (0.492/Pr)**(9/16))**(4/9)
+    
+    # HARD CAP: Convection can't be more than 100x pure conduction
+    return min(100.0, max(1.0, nu_lam)) 
+
+def cd_reynolds(Re):
+    if Re < 10:
+        return 0.1
+    elif Re < 100:
+        return 0.1 + (0.5 * (Re - 10) / 90.0)
+    else:
+        return 0.6
+
+def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, fs_lock, thresh_visc):
     if np.isnan(T_ms) or np.isnan(T_me):
         return True
         
@@ -17,15 +34,29 @@ def is_flowable(T, H, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_vi
     else:
         frac = 1.0
         
+    fs = 1.0 - frac
+    
     mu = np.interp(T, T_grid, mu_grid)
-    return (frac >= thresh_liq) and (mu <= thresh_visc)
+    return (fs <= fs_lock) and (mu <= thresh_visc)
 
-def h_internal(m_dot, d_in, d_coil_actual, rho, cp, mu, k) -> float:
-    """Internal convection coefficient. (To be copied from legacy/heat_transfer.py later)."""
-    return 100.0 # Dummy value
+def k_face(k_i, k_j, T_i, T_j, rho_i, rho_j):
+    return 2.0 * k_i * k_j / (k_i + k_j)
 
-def h_external(T_oil, H_oil, T_grid, H_grid, rho_grid, cp_grid, k_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc, beta, dT_natural, d_out):
-    flowable = is_flowable(T_oil, H_oil, T_grid, H_grid, mu_grid, T_ms, T_me, thresh_liq, thresh_visc)
+def h_internal(m_dot, d_in, d_coil_actual, rho, cp, mu, k):
+    A = np.pi * (d_in/2.0)**2
+    v = m_dot / (max(1e-6, rho) * A)
+    Re = rho * v * d_in / max(1e-6, mu)
+    Pr = mu * cp / max(1e-6, k)
+    if Re > 10000.0:
+        f = (0.79*np.log(Re) - 1.64)**-2
+        Nu = (f/8.0)*(Re - 1000.0)*Pr/(1.0 + 2.17*np.sqrt(f/8.0)*(Pr**(2.0/3.0) - 1.0))
+        Nu *= (1.0 + (d_in / d_coil_actual)**0.9)
+    else:
+        Nu = 4.36
+    return Nu * k / d_in
+
+def h_external(T_oil, H_oil, T_grid, H_grid, rho_grid, cp_grid, k_grid, mu_grid, T_ms, T_me, fs_lock, thresh_visc, beta, dT_natural, d_out):
+    flowable = is_flowable(T_oil, H_oil, T_grid, H_grid, mu_grid, T_ms, T_me, fs_lock, thresh_visc)
     if not flowable:
         return 5.0
         
