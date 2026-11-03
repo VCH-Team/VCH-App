@@ -15,6 +15,7 @@ class Grid:
         self.col_len = None
         self.col_cells = None
         self.wall_area = None
+        self.cell_coords = None # <--- Added this
         self.is_1d = False
 
     @classmethod
@@ -32,6 +33,7 @@ class Grid:
         index_map = np.full((res, res, res), -1, dtype=np.int32)
         
         xc_list, yc_list, zc_list, V_list = [], [], [], []
+        cell_coords_list = [] # <--- Added this
         
         c = 0
         for k in range(res):
@@ -48,6 +50,7 @@ class Grid:
                         yc_list.append(yc)
                         zc_list.append(zc)
                         V_list.append(dx * dy * dz)
+                        cell_coords_list.append([i, j, k]) # <--- Added this
                         c += 1
 
         g.N = c
@@ -55,6 +58,7 @@ class Grid:
         g.yc = np.array(yc_list)
         g.zc = np.array(zc_list)
         g.V = np.array(V_list)
+        g.cell_coords = np.array(cell_coords_list, dtype=np.int32) # <--- Added this
         
         # Face order: -x, +x, -y, +y, -z, +z
         g.nbr = np.full((g.N, 6), -1, dtype=np.int32)

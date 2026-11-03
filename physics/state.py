@@ -152,14 +152,28 @@ class State:
         self.E_loss_cum = backup.E_loss_cum
         self.update_derived(mat)
 
-    def save_snapshot(self, outdir, t_hr, res):
-        """Saves the 3D grid to an .npz file for the viewer."""
+    def save_snapshot(self, grid, outdir, time_hr):
+        """
+        Saves a 3D snapshot of the tank state as a compressed .npz file.
+        """
         import os
         snap_dir = os.path.join(outdir, "snapshots")
         os.makedirs(snap_dir, exist_ok=True)
         
-        np.savez_compressed(
-            os.path.join(snap_dir, f"snap_{t_hr:05.2f}.npz"),
-            T=self.T, fill=self.fill, m=self.m, t_hr=t_hr, res=res
-        )
-        return os.path.join("snapshots", f"snap_{t_hr:05.2f}.npz")
+        res = int(np.max(grid.cell_coords)) + 1
+        
+        # Create empty 3D grids filled with NaNs
+        T_3d = np.full((res, res, res), np.nan, dtype=np.float32)
+        m_3d = np.full((res, res, res), np.nan, dtype=np.float32)
+        fill_3d = np.full((res, res, res), np.nan, dtype=np.float32)
+        
+        # Fill the 3D grids from the 1D arrays
+        for c in range(grid.N):
+            i, j, k = grid.cell_coords[c]
+            T_3d[i, j, k] = self.T[c]
+            m_3d[i, j, k] = self.m[c]
+            fill_3d[i, j, k] = self.fill[c]
+            
+        filename = os.path.join(snap_dir, f"snap_{time_hr:06.2f}.npz")
+        np.savez_compressed(filename, T=T_3d, m=m_3d, fill=fill_3d, t_hr=time_hr, res=res)
+        return filename
