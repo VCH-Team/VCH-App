@@ -3,41 +3,50 @@ import numpy as np
 from numba import njit
 
 @njit(cache=True)
-def _flatten_kernel(m, H, V, rho, mu, nbr, col_height, dz, K_settle):
-    """
-    Moves mass laterally between adjacent columns to level the surface.
-    """
+def _flatten_kernel(m, H, V, rho, mu, nbr, col_height, dz, dt):
     N = m.shape[0]
+    g = 9.81
     
-    # Check all 4 lateral faces (-x, +x, -y, +y)
+    # Check all 4 lateral faces
     for c in range(N):
         for f in (0, 1, 2, 3):
             n = nbr[c, f]
             if n < 0:
                 continue
                 
-            # h_c is the effective height of the column containing cell c
             h_c = col_height[c]
             h_n = col_height[n]
             
+            # We only move from high to low to prevent double-counting
             local_dh = h_c - h_n
-            if local_dh <= 1e-4:
+            if local_dh <= 1e-6:
                 continue
                 
-            # Only move fluid that is actually present
-            if m[c] <= 1e-9:
+            if m[c] <= 1e-9 or m[n] >= V[n] * rho[n] - 1e-9:
                 continue
                 
-            # Capacity of the receiving cell
-            cap_n = V[n] * rho[c] # use donor's density
-            needed = cap_n - m[n]
-            if needed <= 1e-9:
-                continue
-                
-            mobility = (K_settle * local_dh) / max(1e-6, mu[c])
-            mobility = min(1.0, max(0.01, mobility))
+            # Calculate film thickness (approximated as the fill fraction * dz)
+            h_film = (m[c] / (rho[c] * V[c])) * dz
             
-            moved = min(m[c] * mobility * 0.5, needed)
+            # Kinematic viscosity
+            nu = mu[c] / max(1e-6, rho[c])
+            
+            # Distance between columns (dx or dy)
+            # For a regular grid, V / dz gives the base area, and sqrt(area) is dx
+            d_face = np.sqrt(V[c] / dz) 
+            
+            # Volumetric flow rate per unit width (m^2/s)
+            q_vol = (g * h_film**3 / (3.0 * max(1e-6, nu))) * (local_dh / d_face)
+            
+            # Mass flow rate (kg/s)
+            mdot = q_vol * rho[c] * d_face
+            
+            # Flux Limiter: Never move more than 50% of the donor cell's mass
+            moved = min(mdot * dt, m[c] * 0.5)
+            
+            # Capacity check: Don't overfill the receiving cell
+            moved = min(moved, V[n] * rho[n] - m[n])
+            
             if moved > 1e-9:
                 h_spec = H[c] / m[c]
                 m[c] -= moved
@@ -46,21 +55,14 @@ def _flatten_kernel(m, H, V, rho, mu, nbr, col_height, dz, K_settle):
                 H[n] += moved * h_spec
 
 def apply(grid, state, mat, cfg):
-    """
-    Python wrapper that calculates column heights and calls the kernel.
-    """
     if grid.N == 0:
         return
         
     state.update_derived(mat)
-    K_settle = cfg.get("K_settle", 1.0)
     dz = cfg["tank_height"] / cfg["res"]
     
     # 1. Calculate the effective height of every column
     col_height = np.zeros(grid.N)
-    
-    # We can compute the volume of each column, then divide by its base area
-    # Since cells are cubic (dx=dy=dz), base area = V[c] / dz
     for i in range(len(grid.col_start)):
         start = grid.col_start[i]
         length = grid.col_len[i]
@@ -71,11 +73,9 @@ def apply(grid, state, mat, cfg):
             if state.m[c] > 1e-9:
                 vol_col += state.m[c] / max(1e-6, state.rho[c])
                 
-        # Area of the column is just the area of one cell in that column
         area_col = grid.V[grid.col_cells[start]] / dz
         eff_h = vol_col / max(1e-9, area_col)
         
-        # Assign this height to all cells in the column
         for q in range(length):
             c = grid.col_cells[start + q]
             col_height[c] = eff_h
@@ -83,8 +83,7 @@ def apply(grid, state, mat, cfg):
     # 2. Run the kernel
     _flatten_kernel(
         state.m, state.H, state.V, state.rho, state.mu, 
-        grid.nbr, col_height, dz, K_settle
+        grid.nbr, col_height, dz, cfg["dt_sec"]
     )
     
-    # 3. Update properties
     state.update_derived(mat)

@@ -11,10 +11,10 @@ from physics.operators import heat, audit
 def setup_heat():
     cfg = config.with_defaults({
         "r_inner": 0.5, "tank_height": 1.0, "res": 10,
-        "M_fluid": 10.0, "T_start": 25.0, "T_amb_mid": 25.0,
-        "h_air": 0.0, 
-        "flow_m3h": 0.0 
+        "M_fluid": 100.0, "T_start": 25.0, "T_amb_mid": 25.0, # <-- increased mass
+        "h_air": 0.0, "flow_m3h": 0.0 
     })
+    # ...
     mat = materials.load(materials.list_available()[0])
     g = grid_module.Grid.build_3d(cfg)
     s = state_module.State(g, mat, cfg)

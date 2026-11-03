@@ -12,7 +12,7 @@ def setup_flatten():
     cfg = config.with_defaults({
         "r_inner": 0.5, "tank_height": 1.0, "res": 10,
         "M_fluid": 50.0, "T_start": 25.0, "T_amb_mid": 25.0,
-        "K_settle": 1.0
+        "dt_sec": 1.0,  # <-- Need this now
     })
     mat = materials.load(materials.list_available()[0])
     g = grid_module.Grid.build_3d(cfg)
