@@ -50,7 +50,7 @@ def test_loop_runs_without_crashing(setup_loop):
     with tempfile.TemporaryDirectory() as tmpdir:
         loop.run_chunk(
             g, s, mat, cfg, coil_segs, -1, -1, 
-            t_window_hr=0.016, 
+            t_window_hr=1, 
             outdir=tmpdir, 
             t_start_hr=0.0
         )
@@ -74,3 +74,24 @@ def test_loop_runs_without_crashing(setup_loop):
             outdir=tmpdir,
             t_start_hr=0.0
         )
+
+def test_loop_cancels(setup_loop):
+    """If the cancel flag is set, the loop should stop early."""
+    cfg, g, s, mat, coil_segs = setup_loop
+    import threading
+    import tempfile
+    
+    cancel_flag = threading.Event()
+    cancel_flag.set() # Trigger the cancel immediately
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        snaps, status = loop.run_chunk(
+            g, s, mat, cfg, coil_segs, -1, -1,
+            t_window_hr=1.0, # Ask for 1 hour
+            outdir=tmpdir,
+            t_start_hr=0.0,
+            cancel_flag=cancel_flag
+        )
+        
+    # It should have cancelled immediately, returning 0 statuses
+    assert len(status) == 0

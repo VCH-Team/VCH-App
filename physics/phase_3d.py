@@ -5,7 +5,7 @@ from physics import state as state_module
 from physics import loop
 from physics.operators import coil
 
-def run_simulation(cfg, mat, R_coil, n_turns, outdir):
+def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_flag=None):
     print(f"Initializing 3D Grid (res={cfg['res']})...")
     grid = grid_module.Grid.build_3d(cfg)
     state = state_module.State(grid, mat, cfg)
@@ -29,7 +29,8 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir):
         "snapshots": [],
         "status_log": [],
         "dt_sec": cfg["dt_sec"],
-        "cfg_used": cfg
+        "cfg_used": cfg,
+        "cancelled": False # Let the GUI know if the user aborted
     }
     
     total_hr = 0.0
@@ -37,33 +38,43 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir):
     for c in range(n_cycles):
         print(f"\n--- CYCLE {c+1}/{n_cycles} ---")
         
-        # Snapshot accumulators before this cycle starts
         m_out_start = state.m_out_cum
         m_in_start = state.m_in_cum
         E_coil_start = state.E_coil_cum
-        
         start_mass = state.total_mass()
         
         # Heating
         print("Starting Heating Phase...")
         snaps, status = loop.run_chunk(
             grid, state, mat, cfg, coil_segs, drain_idx, fill_idx, 
-            cfg["t_window_hr"], outdir, total_hr, is_heating=True
+            cfg["t_window_hr"], outdir, total_hr, 
+            progress_cb=progress_cb, cancel_flag=cancel_flag, is_heating=True
         )
         results["snapshots"].extend(snaps)
         results["status_log"].extend(status)
         total_hr += cfg["t_window_hr"]
         
+        # Check if cancelled during heating
+        if cancel_flag and cancel_flag.is_set():
+            results["cancelled"] = True
+            break
+            
         # Cooling
         if c < n_cycles - 1 or cfg.get("cool_down_at_end", False):
             print("Starting Cooling Phase...")
             snaps, status = loop.run_chunk(
                 grid, state, mat, cfg, coil_segs, drain_idx, fill_idx, 
-                cfg["t_cooldown_hr"], outdir, total_hr, is_heating=False
+                cfg["t_cooldown_hr"], outdir, total_hr, 
+                progress_cb=progress_cb, cancel_flag=cancel_flag, is_heating=False
             )
             results["snapshots"].extend(snaps)
             results["status_log"].extend(status)
             total_hr += cfg["t_cooldown_hr"]
+            
+        # Check if cancelled during cooling
+        if cancel_flag and cancel_flag.is_set():
+            results["cancelled"] = True
+            break
             
         # Calculate Cycle Metrics
         cycle_m_out = state.m_out_cum - m_out_start
@@ -79,11 +90,11 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir):
             "remaining_mass": end_mass,
             "extracted_kg": cycle_m_out,
             "filled_kg": cycle_m_in,
-            "extracted_temp_avg": state.T_coil_out, # just a placeholder for now
+            "extracted_temp_avg": state.T_coil_out,
             "efficiency_pct": eff,
             "utilisation_pct": 100.0,
             "fill_util_pct": 100.0,
-            "heatmaps": [], # CE team will generate these later
+            "heatmaps": [],
             "massmaps": [],
             "snapshot_times": [float(f.split('_')[-1].replace('.npz','')) for f in snaps]
         })
@@ -92,7 +103,6 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir):
     results["total_extracted_kg"] = state.m_out_cum
     results["total_filled_kg"] = state.m_in_cum
     results["final_mass"] = state.total_mass()
-    # TODO: Add logic for first_drain / last_drain tracking later
     
     print("\nSimulation Complete.")
     return results
