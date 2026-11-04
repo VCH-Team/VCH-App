@@ -50,7 +50,7 @@ def test_loop_runs_without_crashing(setup_loop):
     with tempfile.TemporaryDirectory() as tmpdir:
         loop.run_chunk(
             g, s, mat, cfg, coil_segs, -1, -1, 
-            t_window_hr=1, 
+            t_window_hr=24, 
             outdir=tmpdir, 
             t_start_hr=0.0
         )
