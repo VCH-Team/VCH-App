@@ -48,7 +48,7 @@ def run_chunk(grid, state, mat, cfg, coil_segs, drain_cell_idx, fill_cell_idx, t
         if step % 5 == 0:
             print(f"  Step {step}/{n_steps}...")
             
-        if progress_cb and step % 5 == 0:
+        if progress_cb and step % 50 == 0:
             progress_cb({"t_hr": t_current/3600.0, "pct": (step/n_steps)*100.0})
             
         status_log.append(1 if is_heating else -1)
