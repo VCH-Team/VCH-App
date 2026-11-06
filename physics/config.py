@@ -189,6 +189,18 @@ DEFAULTS = {
         "default": 0.8, "type": float, "range": (0.0, 1.0),
         "group": "physics", "label": "Solid fraction lock threshold",
     },
+        "tank_shape": {
+        "default": "cylinder", "type": str, "range": ("cylinder", "cuboid"),
+        "group": "geometry", "label": "Tank Shape",
+    },
+    "tank_length": {
+        "default": 2.44, "type": float, "range": (0.1, 20.0),
+        "group": "geometry", "label": "Tank Length (m) [Cuboid only]",
+    },
+    "tank_width": {
+        "default": 2.44, "type": float, "range": (0.1, 20.0),
+        "group": "geometry", "label": "Tank Width (m) [Cuboid only]",
+    },
     },
 }
 

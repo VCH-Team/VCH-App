@@ -22,35 +22,50 @@ class Grid:
     def build_3d(cls, cfg):
         g = cls()
         res = int(cfg["res"])
-        r_inner = float(cfg["r_inner"])
         tank_height = float(cfg["tank_height"])
+        shape = cfg.get("tank_shape", "cylinder")
 
-        dx = (2.0 * r_inner) / res
-        dy = dx
+        # 1. Determine X and Y bounds based on shape
+        if shape == "cylinder":
+            r_inner = float(cfg["r_inner"])
+            L_x = 2.0 * r_inner
+            L_y = 2.0 * r_inner
+        else:
+            L_x = float(cfg["tank_length"])
+            L_y = float(cfg["tank_width"])
+            r_inner = 0.0 # Not used for cuboid
+
+        dx = L_x / res
+        dy = L_y / res
         dz = tank_height / res
 
-        # Map 3D index (i,j,k) to flat index c
         index_map = np.full((res, res, res), -1, dtype=np.int32)
-        
         xc_list, yc_list, zc_list, V_list = [], [], [], []
-        cell_coords_list = [] # <--- Added this
+        cell_coords_list = []
         
         c = 0
         for k in range(res):
             for j in range(res):
                 for i in range(res):
-                    xc = -r_inner + (i + 0.5) * dx
-                    yc = -r_inner + (j + 0.5) * dy
+                    xc = -L_x/2.0 + (i + 0.5) * dx
+                    yc = -L_y/2.0 + (j + 0.5) * dy
                     zc = (k + 0.5) * dz
                     
-                    # Only keep cells inside the cylinder
-                    if xc**2 + yc**2 <= r_inner**2:
+                    # 2. Mask out cells outside the shape
+                    is_inside = False
+                    if shape == "cylinder":
+                        if xc**2 + yc**2 <= r_inner**2:
+                            is_inside = True
+                    elif shape == "cuboid":
+                        is_inside = True # All cells in the bounding box are active
+
+                    if is_inside:
                         index_map[i, j, k] = c
                         xc_list.append(xc)
                         yc_list.append(yc)
                         zc_list.append(zc)
                         V_list.append(dx * dy * dz)
-                        cell_coords_list.append([i, j, k]) # <--- Added this
+                        cell_coords_list.append([i, j, k])
                         c += 1
 
         g.N = c
@@ -58,9 +73,8 @@ class Grid:
         g.yc = np.array(yc_list)
         g.zc = np.array(zc_list)
         g.V = np.array(V_list)
-        g.cell_coords = np.array(cell_coords_list, dtype=np.int32) # <--- Added this
+        g.cell_coords = np.array(cell_coords_list, dtype=np.int32)
         
-        # Face order: -x, +x, -y, +y, -z, +z
         g.nbr = np.full((g.N, 6), -1, dtype=np.int32)
         g.A_face = np.zeros((g.N, 6))
         g.d_face = np.zeros((g.N, 6))
@@ -103,7 +117,6 @@ class Grid:
                         g.A_face[c, 5] = A_z
                         g.d_face[c, 5] = dz
 
-        # Build columns for settling
         col_start = []
         col_len = []
         col_cells = []
@@ -124,10 +137,9 @@ class Grid:
         g.col_len = np.array(col_len, dtype=np.int32)
         g.col_cells = np.array(col_cells, dtype=np.int32)
         
-        # Calculate wall areas (faces that are -1 and touch the outside)
         g.wall_area = np.zeros(g.N)
         for c in range(g.N):
-            for f in range(4): # radial walls only
+            for f in range(4): 
                 if g.nbr[c, f] == -1:
                     g.wall_area[c] += g.A_face[c, f]
                     

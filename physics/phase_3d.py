@@ -5,6 +5,16 @@ from physics import state as state_module
 from physics import loop
 from physics.operators import coil
 
+def find_closest_cell(grid, r, theta, z):
+    if r <= 0.0:
+        xc, yc = 0.0, 0.0
+    else:
+        xc = r * np.cos(np.deg2rad(theta))
+        yc = r * np.sin(np.deg2rad(theta))
+        
+    dist_sq = (grid.xc - xc)**2 + (grid.yc - yc)**2 + (grid.zc - z)**2
+    return int(np.argmin(dist_sq))
+
 def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_flag=None):
     print(f"Initializing 3D Grid (res={cfg['res']})...")
     grid = grid_module.Grid.build_3d(cfg)
@@ -14,36 +24,31 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
     if coil_segs is None:
         raise ValueError("Coil radius is entirely outside the tank!")
         
-    drain_idx = np.argmin(grid.zc) if cfg.get("simulate_drain", False) else -1
-    fill_idx = np.argmax(grid.zc) if cfg.get("simulate_fill", False) else -1
+    drain_idx = -1
+    if cfg.get("simulate_drain", False):
+        drain_idx = find_closest_cell(grid, cfg["drain_r"], cfg["drain_theta"], cfg["drain_z"])
+        print(f"  Drain mapped to cell {drain_idx}")
+        
+    fill_idx = -1
+    if cfg.get("simulate_fill", False):
+        fill_idx = find_closest_cell(grid, cfg["fill_r"], cfg["fill_theta"], cfg["fill_z"])
+        print(f"  Fill mapped to cell {fill_idx}")
     
     n_cycles = cfg.get("N_cycles", 1)
     results = {
-        "cycle_metrics": [],
-        "total_extracted_kg": 0.0,
-        "total_filled_kg": 0.0,
-        "final_mass": 0.0,
-        "first_drain": -1.0,
-        "last_drain": -1.0,
-        "total_hr": 0.0,
-        "snapshots": [],
-        "status_log": [],
-        "dt_sec": cfg["dt_sec"],
-        "cfg_used": cfg,
-        "cancelled": False # Let the GUI know if the user aborted
+        "cycle_metrics": [], "total_extracted_kg": 0.0, "total_filled_kg": 0.0,
+        "final_mass": 0.0, "first_drain": -1.0, "last_drain": -1.0, "total_hr": 0.0,
+        "snapshots": [], "status_log": [], "dt_sec": cfg["dt_sec"], "cfg_used": cfg, "cancelled": False
     }
     
     total_hr = 0.0
-    
     for c in range(n_cycles):
         print(f"\n--- CYCLE {c+1}/{n_cycles} ---")
-        
         m_out_start = state.m_out_cum
         m_in_start = state.m_in_cum
         E_coil_start = state.E_coil_cum
         start_mass = state.total_mass()
         
-        # Heating
         print("Starting Heating Phase...")
         snaps, status = loop.run_chunk(
             grid, state, mat, cfg, coil_segs, drain_idx, fill_idx, 
@@ -54,12 +59,10 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
         results["status_log"].extend(status)
         total_hr += cfg["t_window_hr"]
         
-        # Check if cancelled during heating
         if cancel_flag and cancel_flag.is_set():
             results["cancelled"] = True
             break
             
-        # Cooling
         if c < n_cycles - 1 or cfg.get("cool_down_at_end", False):
             print("Starting Cooling Phase...")
             snaps, status = loop.run_chunk(
@@ -71,31 +74,21 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
             results["status_log"].extend(status)
             total_hr += cfg["t_cooldown_hr"]
             
-        # Check if cancelled during cooling
         if cancel_flag and cancel_flag.is_set():
             results["cancelled"] = True
             break
             
-        # Calculate Cycle Metrics
         cycle_m_out = state.m_out_cum - m_out_start
         cycle_m_in = state.m_in_cum - m_in_start
         cycle_E_coil = state.E_coil_cum - E_coil_start
         end_mass = state.total_mass()
-        
         eff = (cycle_m_out / start_mass * 100.0) if start_mass > 0 else 0.0
         
         results["cycle_metrics"].append({
-            "cycle": c + 1,
-            "start_mass": start_mass,
-            "remaining_mass": end_mass,
-            "extracted_kg": cycle_m_out,
-            "filled_kg": cycle_m_in,
-            "extracted_temp_avg": state.T_coil_out,
-            "efficiency_pct": eff,
-            "utilisation_pct": 100.0,
-            "fill_util_pct": 100.0,
-            "heatmaps": [],
-            "massmaps": [],
+            "cycle": c + 1, "start_mass": start_mass, "remaining_mass": end_mass,
+            "extracted_kg": cycle_m_out, "filled_kg": cycle_m_in, "extracted_temp_avg": state.T_coil_out,
+            "efficiency_pct": eff, "utilisation_pct": 100.0, "fill_util_pct": 100.0,
+            "heatmaps": [], "massmaps": [],
             "snapshot_times": [float(f.split('_')[-1].replace('.npz','')) for f in snaps]
         })
         
@@ -103,6 +96,5 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
     results["total_extracted_kg"] = state.m_out_cum
     results["total_filled_kg"] = state.m_in_cum
     results["final_mass"] = state.total_mass()
-    
     print("\nSimulation Complete.")
     return results

@@ -78,16 +78,16 @@ class State:
         h_start = float(np.interp(T_start, mat["T_grid"], mat["H_grid"]))
 
         V_tank = float(self.V.sum())
-        M_target = cfg.get("M_fluid")
         
-        # If M_fluid is None or 0, fill the whole tank. Otherwise, use the requested mass.
+        # RESPECT THE USER'S MASS INPUT
+        M_target = cfg.get("M_fluid")
         if M_target is None or M_target <= 0:
             M_target = rho_start * V_tank
         else:
             M_target = float(M_target)
-        
+            
         V_target = M_target / rho_start
-        f = min(1.0, V_target / V_tank)
+        f = min(1.0, V_target / V_tank) # Fill fraction
 
         _initial_fill(self.m, self.H, self.V,
                       np.asarray(grid.col_cells, dtype=np.int64),
@@ -153,26 +153,27 @@ class State:
         self.update_derived(mat)
 
     def save_snapshot(self, grid, outdir, time_hr):
-        """
-        Saves a 3D snapshot of the tank state as a compressed .npz file.
-        """
         import os
         snap_dir = os.path.join(outdir, "snapshots")
         os.makedirs(snap_dir, exist_ok=True)
         
         res = int(np.max(grid.cell_coords)) + 1
         
-        # Create empty 3D grids filled with NaNs
         T_3d = np.full((res, res, res), np.nan, dtype=np.float32)
         m_3d = np.full((res, res, res), np.nan, dtype=np.float32)
         fill_3d = np.full((res, res, res), np.nan, dtype=np.float32)
         
-        # Fill the 3D grids from the 1D arrays
         for c in range(grid.N):
             i, j, k = grid.cell_coords[c]
-            T_3d[i, j, k] = self.T[c]
-            m_3d[i, j, k] = self.m[c]
-            fill_3d[i, j, k] = self.fill[c]
+            
+            # --- THE FIX: Only save temperature if there is actually fluid ---
+            if self.m[c] > 1e-6:
+                T_3d[i, j, k] = self.T[c]
+                m_3d[i, j, k] = self.m[c]
+                fill_3d[i, j, k] = self.fill[c]
+            else:
+                # Leave as NaN so it's completely invisible
+                pass
             
         filename = os.path.join(snap_dir, f"snap_{time_hr:06.2f}.npz")
         np.savez_compressed(filename, T=T_3d, m=m_3d, fill=fill_3d, t_hr=time_hr, res=res)

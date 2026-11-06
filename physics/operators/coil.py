@@ -11,11 +11,28 @@ class CoilSegments:
         self.R_coil = R_coil
 
 def build_coil_segments(grid, cfg, R_coil, n_turns):
-    """
-    Finds all cells the coil passes through and sorts them bottom-to-top.
-    """
-    r_lo = R_coil - cfg["d_out"] / 2.0
-    r_hi = R_coil + cfg["d_out"] / 2.0
+    d_in = cfg["d_in"]
+    d_out = cfg["d_out"]
+    H = cfg["L_avail"]
+    
+    if n_turns < 1:
+        raise ValueError(f"n_turns must be at least 1, got {n_turns}")
+    
+    r_inner = cfg["r_inner"]
+    if R_coil + d_out / 2.0 > r_inner:
+        raise ValueError(f"Coil radius {R_coil:.3f}m exceeds tank inner radius {r_inner:.3f}m.")
+    
+    # Pitch constraint (turns cannot overlap)
+    pitch = H / n_turns
+    if pitch < d_out:
+        max_turns = int(H / d_out)
+        raise ValueError(
+            f"Coil turns too tight! Pitch={pitch*100:.1f}cm, Tube={d_out*100:.1f}cm. "
+            f"Max turns for H={H:.2f}m is {max_turns}."
+        )
+    
+    r_lo = R_coil - d_out / 2.0
+    r_hi = R_coil + d_out / 2.0
     z_lo = cfg["coil_clearance_bottom"]
     z_hi = cfg["coil_clearance_bottom"] + cfg["L_avail"]
     
@@ -25,21 +42,19 @@ def build_coil_segments(grid, cfg, R_coil, n_turns):
         z = grid.zc[c]
         if r_lo <= r <= r_hi and z_lo <= z <= z_hi:
             cells.append(c)
-            
+    
     if len(cells) == 0:
-        return None
-        
-    # Sort the cells by Z height (bottom to top) to represent the serpentine flow
+        raise ValueError("No grid cells found inside the coil band. Try increasing grid resolution.")
+    
     cells = np.array(cells)
     sort_idx = np.argsort(grid.zc[cells])
     cells = cells[sort_idx]
     
-    # Total area divided by number of segments
     L_total = 2.0 * np.pi * R_coil * n_turns
-    A_total = np.pi * cfg["d_out"] * L_total
+    A_total = np.pi * d_out * L_total
     A_seg = A_total / len(cells)
     
-    return CoilSegments(cells, A_seg, cfg["d_in"], cfg["d_out"], R_coil)
+    return CoilSegments(cells, A_seg, d_in, d_out, R_coil)
 
 def march(grid, state, mat, cfg, dt, coil_segs, is_heating=True):
     """

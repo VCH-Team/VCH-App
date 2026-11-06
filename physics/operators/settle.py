@@ -1,6 +1,6 @@
 # physics/operators/settle.py
 import numpy as np
-from numba import njit, prange
+from numba import njit
 
 @njit(cache=True)
 def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
@@ -15,14 +15,15 @@ def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
             c_bot = col_cells[start + q]
             c_top = col_cells[start + q + 1]
             
-            # Skip if either cell is locked solid
             if fs[c_bot] >= fs_lock or fs[c_top] >= fs_lock:
                 continue
                 
             if m[c_top] <= 1e-9:
                 continue
                 
-            cap_bot = V[c_bot] * rho[c_bot]
+            # BUG FIX: Use the falling fluid's density (rho[c_top]) 
+            # to calculate capacity, not the empty cell's cold density
+            cap_bot = V[c_bot] * rho[c_top]
             space = cap_bot - m[c_bot]
             
             if space > 1e-9:
@@ -38,13 +39,13 @@ def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
             c_bot = col_cells[start + q]
             c_top = col_cells[start + q + 1]
             
-            # Skip if either cell is locked solid
-            if fs[c_bot] >= fs_lock:
+            if fs[c_bot] >= fs_lock or fs[c_top] >= fs_lock:
                 continue
                 
             if m[c_bot] <= 1e-9:
                 continue
                 
+            # Here, we use the cell's own density because it is expanding
             cap_bot = V[c_bot] * rho[c_bot]
             excess = m[c_bot] - cap_bot
             
