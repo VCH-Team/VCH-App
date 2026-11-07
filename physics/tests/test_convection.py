@@ -11,9 +11,20 @@ from physics.operators import heat, coil
 def setup_convection():
     cfg = config.with_defaults({
         "r_inner": 0.5, "tank_height": 1.0, "res": 10,
-        "M_fluid": 100.0, "T_start": 20.0, "T_amb_mid": 20.0, # <-- increased mass
+        "M_fluid": 100.0, "T_start": 20.0, "T_amb_mid": 20.0,
         "h_air": 0.0, "flow_m3h": 0.0, 
-        "coil_clearance_bottom": 0.0
+        "coil_clearance_bottom": 0.0,
+        "T_water_arr": np.linspace(0, 100, 10),
+        "rho_water_arr": np.full(10, 1000.0),
+        "cp_water_arr": np.full(10, 4180.0),
+        "mu_water_arr": np.full(10, 0.001),
+        "k_water_arr": np.full(10, 0.6),
+        "T_tube_arr": np.linspace(0, 100, 10),
+        "k_tube_arr": np.full(10, 16.0),
+        "T_wall_arr": np.linspace(0, 100, 10), # <--- ADDED
+        "k_wall_arr": np.full(10, 16.0),       # <--- ADDED
+        "rho_wall_arr": np.full(10, 8000.0),   # <--- ADDED
+        "cp_wall_arr": np.full(10, 500.0),     # <--- ADDED
     })
     mat = materials.load(materials.list_available()[0])
     g = grid_module.Grid.build_3d(cfg)
@@ -22,7 +33,6 @@ def setup_convection():
     c_bot = g.col_cells[0]
     c_top = g.col_cells[1]
     
-    # Force mass into c_top so it can receive heat
     s.m[c_top] = 1.0
     s.T[c_bot] = 80.0
     s.H[c_bot] = s.m[c_bot] * np.interp(80.0, mat["T_grid"], mat["H_grid"])
@@ -31,17 +41,13 @@ def setup_convection():
     
     s.update_derived(mat)
     s.H_initial = s.total_enthalpy()
-    coil_segs = coil.build_coil_segments(g, cfg, R_coil=0.0, n_turns=0)
+    
+    # FIX: Provide a valid R_coil and n_turns=1
+    coil_segs = coil.build_coil_segments(g, cfg, R_coil=0.4, n_turns=1) 
     return cfg, g, s, mat, coil_segs, c_bot, c_top
 
 def test_convection_accelerates_heat_transfer(setup_convection):
-    """An unstable hot-bottom layer should transfer heat faster than pure conduction."""
     cfg, g, s, mat, coil_segs, c_bot, c_top = setup_convection
-    
     T_top_before = s.T[c_top]
-    
-    # Run one step of heat transfer
     heat.apply(g, s, mat, coil_segs, cfg, dt=1.0)
-    
-    # The top cell should have warmed up significantly
     assert s.T[c_top] > T_top_before

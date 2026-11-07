@@ -151,30 +151,3 @@ class State:
         self.E_coil_cum = backup.E_coil_cum
         self.E_loss_cum = backup.E_loss_cum
         self.update_derived(mat)
-
-    def save_snapshot(self, grid, outdir, time_hr):
-        import os
-        snap_dir = os.path.join(outdir, "snapshots")
-        os.makedirs(snap_dir, exist_ok=True)
-        
-        res = int(np.max(grid.cell_coords)) + 1
-        
-        T_3d = np.full((res, res, res), np.nan, dtype=np.float32)
-        m_3d = np.full((res, res, res), np.nan, dtype=np.float32)
-        fill_3d = np.full((res, res, res), np.nan, dtype=np.float32)
-        
-        for c in range(grid.N):
-            i, j, k = grid.cell_coords[c]
-            
-            # --- THE FIX: Only save temperature if there is actually fluid ---
-            if self.m[c] > 1e-6:
-                T_3d[i, j, k] = self.T[c]
-                m_3d[i, j, k] = self.m[c]
-                fill_3d[i, j, k] = self.fill[c]
-            else:
-                # Leave as NaN so it's completely invisible
-                pass
-            
-        filename = os.path.join(snap_dir, f"snap_{time_hr:06.2f}.npz")
-        np.savez_compressed(filename, T=T_3d, m=m_3d, fill=fill_3d, t_hr=time_hr, res=res)
-        return filename

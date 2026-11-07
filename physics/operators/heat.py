@@ -7,9 +7,11 @@ from physics.closures import nu_eff_buoyancy
 @njit(cache=True)
 def _heat_kernel(m, T, k, rho, nbr, A_face, d_face, wall_area, U_wall, T_amb, dt, dH):
     N = T.shape[0]
+        
     for c in range(N):
         if m[c] <= 1e-9:
             continue
+            
         for f in (0, 2, 4):
             n = nbr[c, f]
             if n >= 0 and m[n] > 1e-9:
@@ -22,9 +24,11 @@ def _heat_kernel(m, T, k, rho, nbr, A_face, d_face, wall_area, U_wall, T_amb, dt
                     alpha = k_avg / max(1e-6, rho[c] * 1000.0) 
                     nu = max(1e-6, 1e-3 / rho[c])
                     Ra = 9.81 * 0.0007 * dT * (d_face[c,f]**3) / max(1e-9, nu * alpha)
+                    
                     k_avg *= nu_eff_buoyancy(Ra)
                         
                 q = k_avg * A_face[c, f] * (T[c] - T[n]) / d_face[c, f]
+                
                 dH[c] -= q * dt
                 dH[n] += q * dt
                 
@@ -50,14 +54,14 @@ def apply(grid, state, mat, coil_segs, cfg, dt, is_heating=True):
     else:
         U_wall = 0.0
     
-    # 3. Kernel
+    # 3. Conduction (Single core is faster for 100k cells)
     _heat_kernel(state.m, state.T, state.k, state.rho, grid.nbr, grid.A_face, grid.d_face, grid.wall_area, U_wall, cfg["T_amb_mid"], dt, dH)
     
-    # 4. Loss tracking
+    # 4. Track Loss
     if U_wall > 0:
         q_wall_total = np.sum(U_wall * grid.wall_area * (state.T - cfg["T_amb_mid"]) * (state.m > 1e-9))
         state.E_loss_cum += q_wall_total * dt
     
-    # 5. Apply
+    # 5. Apply Energy Change
     state.H += dH
     state.update_derived(mat)
