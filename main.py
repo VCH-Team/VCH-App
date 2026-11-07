@@ -2,13 +2,17 @@
 import os
 import time
 from datetime import datetime
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 import materials
 from physics import config
 from physics import phase_design
 from physics import phase_3d
+import viewer  # <--- ADDED
+import report  # <--- ADDED
 
+# --- PRE-DEFINED LISTS (Matching your Excel) ---
 FLUIDS = ["Water", "RBD Palm Oil", "30% Propylene Glycol"]
 METALS = ["Copper", "Stailness Steel", "Mild Steel"]
 INSULATORS = [
@@ -96,11 +100,13 @@ def main():
     outdir = os.path.join("testout", f"run_{timestamp}")
     os.makedirs(outdir, exist_ok=True)
     
+    # 1. MATERIALS
     mat_tank, _ = pick_material("Tank Fluid", "fluid", default_idx=1)
     mat_coil, _ = pick_material("Coil Fluid", "fluid", default_idx=0)
     mat_tube, _ = pick_material("Coil Tube Metal", "metal", default_idx=0)
     mat_wall, _ = pick_material("Tank Wall Metal", "metal", default_idx=1)
     
+    # 2. GEOMETRY
     print("\n--- Tank Geometry & Walls ---")
     shape = input("Tank shape (cylinder/cuboid) [cylinder]: ").strip().lower() or "cylinder"
     
@@ -125,6 +131,7 @@ def main():
         
     h_air = ask("Ambient Air Convection (W/m2K)", 10.0)
     
+    # 3. OPERATING CONDITIONS
     print("\n--- Operating Conditions ---")
     T_amb_low = ask("Lowest Site Temp / Solid Start (°C)", 5.0)
     T_start = ask("Tank Starting Temp (°C)", 20.0)
@@ -133,7 +140,7 @@ def main():
     T_water_in = ask("Coil Inlet Temp (°C)", 80.0)
     flow_m3h = ask("Coil Flow Rate (m3/h)", 1.0)
 
-    # --- DRAIN & FILL ---
+    # 4. DRAIN & FILL
     print("\n--- Drain & Fill Setup ---")
     sim_drain = input("Enable Drain? (y/n) [n]: ").strip().lower() == 'y'
     drain_r=drain_th=drain_x=drain_y=drain_z=drain_d=drain_pressure=drain_max_flow=0.0
@@ -173,6 +180,7 @@ def main():
     print(f"  [Info] Max capacity at {T_start}°C is ~{max_mass:.1f} kg.")
     M_fluid = ask(f"Tank Fluid Mass (0-{max_mass:.0f} kg)", max_mass)
     
+    # 5. COIL PLACEMENT
     print("\n--- Coil Dimensions & Placement ---")
     d_in = ask("Coil Inner Diameter (m)", 0.0409)
     d_out = ask("Coil Outer Diameter (m)", 0.04826)
@@ -181,18 +189,23 @@ def main():
     L_avail = tank_height - bottom_clearance - top_clearance
     max_possible_turns = int(L_avail / d_out)
     
-    print("\n--- Simulation Time Settings ---")
-    t_window_hr = ask("Simulation Duration (hours)", 1.0)
+    # 6. TIME SETTINGS
+    print("\n--- Simulation Schedule ---")
+    t_window_hr = ask("Heating Phase Duration (hours)", 12.0)
+    t_cooldown_hr = ask("Cooling Phase Duration (hours)", 12.0)
+    N_cycles = ask("Number of Cycles (Heating + Cooling)", 1, int)
     dt_sec = ask("Time Step Size (seconds)", 1.0)
     snapshot_interval_hr = ask("Snapshot Interval (hours)", 0.1)
     
+    # 7. BUILD CONFIG
     cfg = config.with_defaults({
         "tank_shape": shape, "r_inner": r_inner, "tank_height": tank_height, "res": res,
         "tank_length": L_tank, "tank_width": W_tank,
         "d_in": d_in, "d_out": d_out, "t_wall": t_wall, "t_ins": t_ins, "k_ins": k_ins, "h_air": h_air,
         "M_fluid": M_fluid, "T_start": T_start, "T_amb_low": T_amb_low, "T_target": T_target, "T_amb_mid": T_amb_mid,
         "T_water_in": T_water_in, "flow_m3h": flow_m3h,
-        "dt_sec": dt_sec, "t_window_hr": t_window_hr, "snapshot_interval_hr": snapshot_interval_hr,
+        "dt_sec": dt_sec, "t_window_hr": t_window_hr, "t_cooldown_hr": t_cooldown_hr, "N_cycles": N_cycles,
+        "snapshot_interval_hr": snapshot_interval_hr,
         "coil_clearance_bottom": bottom_clearance, "L_avail": L_avail,
         
         "simulate_drain": sim_drain, 
@@ -212,6 +225,7 @@ def main():
     cfg["T_wall_arr"] = mat_wall["T_grid"]; cfg["k_wall_arr"] = mat_wall["k_grid"]
     cfg["rho_wall_arr"] = mat_wall["rho_grid"]; cfg["cp_wall_arr"] = mat_wall["cp_sens_grid"]
 
+    # 8. PHASE A
     print("\n--- Phase A Setup ---")
     num_R = ask("How many coil radii to compare? (1-5)", 3, int)
     min_R = ask("Minimum Radius to test (m)", r_inner * 0.3 if shape=="cylinder" else 0.1)
@@ -220,6 +234,7 @@ def main():
     
     radii_tested = save_combined_chart(cfg, mat_tank, min_R, max_R, num_R, max_turns, outdir)
     
+    # 9. SELECT COIL & RUN
     print("\n--- Coil Selection ---")
     R_coil = ask("Chosen Coil Radius (m)", radii_tested[-1])
     n_turns = ask("Chosen Coil Turns", max_turns // 2, int)
@@ -228,7 +243,37 @@ def main():
     t0 = time.time()
     results = phase_3d.run_simulation(cfg, mat_tank, R_coil, n_turns, outdir)
     print(f"Time taken: {time.time() - t0:.1f} seconds")
-    print(f"\nRun complete! To view the dashboard, run: python viewer.py")
+    
+    # 10. SAVE RESULTS FOR REPORT
+    clean_results = {
+        "total_extracted_kg": float(results["total_extracted_kg"]),
+        "total_filled_kg": float(results["total_filled_kg"]),
+        "final_mass": float(results["final_mass"]),
+        "total_hr": float(results["total_hr"]),
+        "cycle_metrics": []
+    }
+    for c in results["cycle_metrics"]:
+        clean_c = {k: float(v) if isinstance(v, (np.floating, float)) else v for k, v in c.items() if k != "snapshot_times"}
+        clean_results["cycle_metrics"].append(clean_c)
+        
+    with open(os.path.join(outdir, "results.json"), "w") as f:
+        json.dump(clean_results, f, indent=4)
+
+    # 11. AUTO-GENERATE OUTPUTS
+    print(f"\nRun complete! Generating outputs...")
+    
+    if results["snapshots"]:
+        print("  >> Opening 3D Dashboard...")
+        try:
+            viewer.create_interactive_viewer(outdir)
+        except Exception as e:
+            print(f"  [Error] Could not open 3D viewer: {e}")
+            
+    print("  >> Opening HTML Report...")
+    try:
+        report.generate_report(outdir)
+    except Exception as e:
+        print(f"  [Error] Could not open HTML report: {e}")
 
 if __name__ == "__main__":
     main()
