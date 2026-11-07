@@ -2,11 +2,11 @@
 import numpy as np
 from numba import njit
 
-@njit(cache=True)
+@njit(parallel=True, cache=True)
 def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
     n_cols = col_start.shape[0]
     
-    for col in range(n_cols):
+    for col in prange(n_cols):
         start = col_start[col]
         n = col_len[col]
         
