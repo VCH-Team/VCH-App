@@ -1,12 +1,12 @@
 # physics/operators/settle.py
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
-@njit(cache=True)
+@njit(parallel=True, cache=True)
 def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
     n_cols = col_start.shape[0]
     
-    for col in range(n_cols):
+    for col in prange(n_cols):
         start = col_start[col]
         n = col_len[col]
         
@@ -21,9 +21,7 @@ def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
             if m[c_top] <= 1e-9:
                 continue
                 
-            # BUG FIX: Use the falling fluid's density (rho[c_top]) 
-            # to calculate capacity, not the empty cell's cold density
-            cap_bot = V[c_bot] * rho[c_top]
+            cap_bot = V[c_bot] * rho[c_bot]
             space = cap_bot - m[c_bot]
             
             if space > 1e-9:
@@ -45,7 +43,6 @@ def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
             if m[c_bot] <= 1e-9:
                 continue
                 
-            # Here, we use the cell's own density because it is expanding
             cap_bot = V[c_bot] * rho[c_bot]
             excess = m[c_bot] - cap_bot
             
@@ -57,7 +54,9 @@ def _settle_kernel(m, H, V, rho, fs, col_cells, col_start, col_len, fs_lock):
                 H[c_top] += excess * h_spec
 
 def apply(grid, state, mat, cfg):
-    if grid.N == 0: return
+    if grid.N == 0:
+        return
+        
     state.update_derived(mat)
     _settle_kernel(
         state.m, state.H, state.V, state.rho, state.fs,
