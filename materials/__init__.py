@@ -11,7 +11,7 @@ from .fit import fit_material
 BASE_DIR = os.path.dirname(__file__)
 CACHE_DIR = os.path.join(BASE_DIR, 'cache')
 PLOTS_DIR = os.path.join(BASE_DIR, 'plots')
-XLSX_PATH = os.path.join(BASE_DIR, 'VCH DataSheet.xlsx')
+XLSX_PATH = os.path.join(BASE_DIR, 'VCH Data.xlsx') # <--- UPDATED FILENAME
 
 def get_hash():
     if not os.path.exists(XLSX_PATH):
@@ -23,26 +23,32 @@ def _cache_valid(cache_file, current_hash):
     if not os.path.exists(cache_file): return False
     try:
         data = np.load(cache_file, allow_pickle=True)
-        if str(data['hash']) != current_hash:
-            return False
-        if 'fs_grid' not in data.files:
-            return False
+        if str(data['hash']) != current_hash: return False
+        if 'fs_grid' not in data.files: return False
+        if 'latent_grid' not in data.files: return False # <--- ADDED
         return True
     except:
         return False
 
 def _plot_properties(name, data):
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8)) # Changed to 2x3
     T = data['T_grid']
+    
     axes[0, 0].plot(T, data['rho_grid'], 'b-'); axes[0, 0].set_title('Density (kg/m³)'); axes[0, 0].set_ylabel('kg/m³')
     axes[0, 1].plot(T, data['cp_sens_grid'], 'b-', label='Sensible')
     axes[0, 1].plot(T, data['cp_eff_grid'], 'r--', label='Effective')
     axes[0, 1].set_title('Cp (J/kgK)'); axes[0, 1].set_ylabel('J/kgK'); axes[0, 1].legend()
+    
+    axes[0, 2].plot(T, data['latent_grid'], 'g-'); axes[0, 2].set_title('Latent Heat (J/kg)'); axes[0, 2].set_ylabel('J/kg')
+    
     axes[1, 0].plot(T, data['k_grid'], 'b-'); axes[1, 0].set_title('Conductivity (W/mK)'); axes[1, 0].set_ylabel('W/mK')
     axes[1, 1].semilogy(T, data['mu_grid'], 'b-'); axes[1, 1].set_title('Viscosity (Pa.s)'); axes[1, 1].set_ylabel('Pa.s')
-    for ax in axes.flatten(): ax.grid(True, alpha=0.3)
-    fig.suptitle(name)
-    fig.tight_layout()
+    axes[1, 2].plot(T, data['fs_grid'], 'k-'); axes[1, 2].set_title('Solid Fraction'); axes[1, 2].set_ylabel('0 to 1')
+    
+    for ax in axes.flatten(): 
+        ax.grid(True, alpha=0.3)
+        ax.set_xlabel('Temp (°C)')
+    fig.suptitle(name); fig.tight_layout()
     fig.savefig(os.path.join(PLOTS_DIR, f'{name}_properties.png'), dpi=100)
     plt.close(fig)
 
@@ -80,7 +86,7 @@ def check_cache():
                 'T_grid': np.array([0.0]), 'rho_grid': np.array([1000.0]),
                 'cp_sens_grid': np.array([1000.0]), 'cp_eff_grid': np.array([1000.0]),
                 'k_grid': np.array([k]), 'mu_grid': np.array([1e5]),
-                'H_grid': np.array([0.0]), 'fs_grid': np.array([0.0]), 
+                'H_grid': np.array([0.0]), 'fs_grid': np.array([0.0]), 'latent_grid': np.array([0.0]),
                 'T_ms': np.array([np.nan]), 'T_me': np.array([np.nan])
             }
             np.savez(cache_file, hash=current_hash, **data)

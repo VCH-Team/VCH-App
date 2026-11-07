@@ -3,10 +3,12 @@ import numpy as np
 from physics import closures
 
 def _march_coil(T_tank, T_coil_in, m_dot, L_total, R_coil, d_in, d_out, R_f_out, mat, cfg, n_seg=50):
-    """
-    Calculates the total heat transfer (Q) for a given coil length (L).
-    Marches segment-by-segment along the coil because the fluid cools down.
-    """
+    # Force to float to prevent array shape bugs
+    T_tank = float(T_tank)
+    T_coil_in = float(T_coil_in)
+    m_dot = float(m_dot)
+    L_total = float(L_total)
+    
     if L_total <= 0:
         return 0.0
         
@@ -59,7 +61,8 @@ def _march_coil(T_tank, T_coil_in, m_dot, L_total, R_coil, d_in, d_out, R_f_out,
         Q_total += Q_seg
         T_coil -= Q_seg / max(1e-6, C_coil)
         
-    return Q_total
+    # at the very end of the function:
+    return float(Q_total) # <--- FIXED
 
 
 def compute_ntu_curves(cfg, mat, R_coil, n_max, n_pts=50):
@@ -80,8 +83,8 @@ def compute_ntu_curves(cfg, mat, R_coil, n_max, n_pts=50):
     
     # 3. Find the 6 critical temperatures for the bands
     T_amb_low = cfg["T_amb_low"]
-    T_ms = mat.get("T_ms", np.nan)
-    T_me = mat.get("T_me", np.nan)
+    T_ms = float(mat.get("T_ms", np.nan)) # <--- FIXED
+    T_me = float(mat.get("T_me", np.nan)) # <--- FIXED
     T_target = cfg.get("T_target", T_coil_in - 5.0)
     
     bands = []

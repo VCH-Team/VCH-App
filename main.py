@@ -4,80 +4,100 @@ import time
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import materials
 from physics import config
 from physics import phase_design
 from physics import phase_3d
 
+# --- PRE-DEFINED LISTS (Matching your Excel) ---
+FLUIDS = ["Water", "RBD Palm Oil", "30% Propylene Glycol"]
+METALS = ["Copper", "Stailness Steel", "Mild Steel"]
+INSULATORS = [
+    "Polyisocyanurate (PIR)", "Polyurethane Foam (PUR)", "Extruded Polystyrene (XPS)",
+    "Expanded Polystyrene (EPS)", "Cellular Glass (Foamglas)", "Mineral Wool (Rockwool)",
+    "Glass Wool (Fiberglass)", "Calcium Silicate", "Expanded Perlite", "Flexible Aerogel Blanket"
+]
+
 def ask(prompt, default, cast=float):
     val = input(f"{prompt} [{default}]: ").strip()
     return cast(val) if val else default
 
-def pick_material(title, default_idx=0):
-    avail = materials.list_available()
-    print(f"\nAvailable Materials for {title}: {', '.join(avail)}")
-    name = input(f"Select material [{avail[default_idx]}]: ").strip()
-    if not name: name = avail[default_idx]
-    return materials.load(name), name
+def pick_material(title, category="fluid", default_idx=0):
+    """Presents a numbered list of materials and returns the selected one."""
+    if category == "fluid":
+        options = FLUIDS
+    elif category == "metal":
+        options = METALS
+    elif category == "insulation":
+        options = INSULATORS
+    else:
+        options = materials.list_available()
+
+    print(f"\n--- {title} ---")
+    for i, name in enumerate(options):
+        print(f"  [{i+1}] {name}")
+        
+    while True:
+        user_in = input(f"Select material (1-{len(options)}) [{default_idx+1}]: ").strip()
+        if not user_in:
+            idx = default_idx
+            break
+        try:
+            idx = int(user_in) - 1
+            if 0 <= idx < len(options):
+                break
+            else:
+                print(f"  Invalid choice. Please enter 1-{len(options)}.")
+        except ValueError:
+            print("  Please enter a number.")
+            
+    name = options[idx]
+    try:
+        mat = materials.load(name)
+    except FileNotFoundError:
+        print(f"  [Error] '{name}' not found in cache. Generating cache, please wait...")
+        materials.check_cache()
+        mat = materials.load(name)
+        
+    return mat, name
 
 def save_combined_chart(cfg, mat_tank, min_R, max_R, num_R, max_turns, outdir):
     print(f"\n--- PHASE A: Generating Quadrilateral Design Charts ---")
     radii = np.linspace(min_R, max_R, num_R)
     colors = ['blue', 'red', 'green', 'purple', 'orange'][:num_R]
 
-    # Create 3 subplots
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True, sharex=True)
     titles = ["Solid Phase (Cold to Melt)", "Slurry Phase (Melting)", "Liquid Phase (Melt to Target)"]
-    
+    max_L = 0
+
     for i, R in enumerate(radii):
         res = phase_design.compute_ntu_curves(cfg, mat_tank, R, max_turns)
         L = res["L"]
+        max_L = max(max_L, np.max(L))
         color = colors[i]
-        
-        # Extract the curves for this radius
-        # (If it's single phase, we only have 2 curves. We handle that below)
         curves = res["curves"]
-        
+
         if len(curves) == 6:
-            # Solid
-            Q_sol_low = curves[0]["Q"] / 1000.0
-            Q_sol_high = curves[1]["Q"] / 1000.0
-            # Slurry
-            Q_slu_low = curves[2]["Q"] / 1000.0
-            Q_slu_high = curves[3]["Q"] / 1000.0
-            # Liquid
-            Q_liq_low = curves[4]["Q"] / 1000.0
-            Q_liq_high = curves[5]["Q"] / 1000.0
-
-            # Plot Solid Band
-            axes[0].fill_between(L, Q_sol_low, Q_sol_high, color=color, alpha=0.3, label=f"R={R:.2f}m")
-            axes[0].plot(L, Q_sol_low, color=color, lw=1); axes[0].plot(L, Q_sol_high, color=color, lw=1)
+            axes[0].fill_between(L, curves[0]["Q"]/1000.0, curves[1]["Q"]/1000.0, color=color, alpha=0.3, label=f"R={R:.2f}m")
+            axes[0].plot(L, curves[0]["Q"]/1000.0, color=color, lw=1); axes[0].plot(L, curves[1]["Q"]/1000.0, color=color, lw=1)
             
-            # Plot Slurry Band
-            axes[1].fill_between(L, Q_slu_low, Q_slu_high, color=color, alpha=0.3)
-            axes[1].plot(L, Q_slu_low, color=color, lw=1); axes[1].plot(L, Q_slu_high, color=color, lw=1)
+            axes[1].fill_between(L, curves[2]["Q"]/1000.0, curves[3]["Q"]/1000.0, color=color, alpha=0.3)
+            axes[1].plot(L, curves[2]["Q"]/1000.0, color=color, lw=1); axes[1].plot(L, curves[3]["Q"]/1000.0, color=color, lw=1)
             
-            # Plot Liquid Band
-            axes[2].fill_between(L, Q_liq_low, Q_liq_high, color=color, alpha=0.3)
-            axes[2].plot(L, Q_liq_low, color=color, lw=1); axes[2].plot(L, Q_liq_high, color=color, lw=1)
-
+            axes[2].fill_between(L, curves[4]["Q"]/1000.0, curves[5]["Q"]/1000.0, color=color, alpha=0.3)
+            axes[2].plot(L, curves[4]["Q"]/1000.0, color=color, lw=1); axes[2].plot(L, curves[5]["Q"]/1000.0, color=color, lw=1)
         else:
-            # Single Phase (Only Liquid)
-            Q_liq_low = curves[0]["Q"] / 1000.0
-            Q_liq_high = curves[1]["Q"] / 1000.0
-            axes[2].fill_between(L, Q_liq_low, Q_liq_high, color=color, alpha=0.3, label=f"R={R:.2f}m")
-            axes[2].plot(L, Q_liq_low, color=color, lw=1); axes[2].plot(L, Q_liq_high, color=color, lw=1)
+            axes[2].fill_between(L, curves[0]["Q"]/1000.0, curves[1]["Q"]/1000.0, color=color, alpha=0.3, label=f"R={R:.2f}m")
+            axes[2].plot(L, curves[0]["Q"]/1000.0, color=color, lw=1); axes[2].plot(L, curves[1]["Q"]/1000.0, color=color, lw=1)
 
     for j in range(3):
         axes[j].set_title(titles[j])
         axes[j].set_xlabel("Coil Length (m)")
+        axes[j].set_xlim(0, max_L)
         axes[j].grid(True, alpha=0.3)
         if j == 0:
             axes[j].set_ylabel("Heat Rate (kW)")
-            
     axes[0].legend(loc="upper left")
-
     plt.suptitle("Coil Heat Transfer Envelopes by Phase", fontsize=16)
     plt.tight_layout()
     
@@ -92,11 +112,11 @@ def main():
     outdir = os.path.join("testout", f"run_{timestamp}")
     os.makedirs(outdir, exist_ok=True)
     
-    # 1. MATERIALS
-    mat_tank, _ = pick_material("Tank Fluid")
-    mat_coil, _ = pick_material("Coil Fluid")
-    mat_tube, _ = pick_material("Coil Tube Metal")
-    mat_wall, _ = pick_material("Tank Wall Metal")
+    # 1. MATERIALS (Using the numbered lists)
+    mat_tank, name_tank = pick_material("Tank Fluid", "fluid", default_idx=1) # Default Palm Oil
+    mat_coil, name_coil = pick_material("Coil Fluid", "fluid", default_idx=0) # Default Water
+    mat_tube, name_tube = pick_material("Coil Tube Metal", "metal", default_idx=0) # Default Copper
+    mat_wall, name_wall = pick_material("Tank Wall Metal", "metal", default_idx=1) # Default SS
     
     # 2. GEOMETRY
     print("\n--- Tank Geometry & Walls ---")
@@ -111,17 +131,22 @@ def main():
     k_ins = 0.04
     if has_ins:
         t_ins = ask("  Insulation Thickness (m)", 0.05)
-        mat_ins, _ = pick_material("Insulation Material")
+        mat_ins, name_ins = pick_material("Insulation Material", "insulation", default_idx=0)
         k_ins = mat_ins["k_grid"][0]
-        print(f"  [Info] Insulation conductivity: {k_ins} W/mK")
+        print(f"  [Info] Using {name_ins} (k={k_ins:.3f} W/mK)")
         
     h_air = ask("Ambient Air Convection (W/m2K)", 10.0)
     
-    # 3. CAPACITY CHECK
-    print("\n--- Capacity & Operating Conditions ---")
+    # 3. OPERATING CONDITIONS
+    print("\n--- Operating Conditions ---")
+    T_amb_low = ask("Lowest Site Temperature / Solid Start (°C)", 5.0)
     T_start = ask("Tank Starting Temperature (°C)", 20.0)
+    T_target = ask("Target Liquid Temperature (°C)", 60.0)
+    T_amb_mid = ask("Ambient Environment Temperature (°C)", 25.0)
+    T_water_in = ask("Coil Inlet Temperature (°C)", 80.0)
+    flow_m3h = ask("Coil Flow Rate (m3/h)", 1.0)
     
-    # Calculate Max Capacity
+    # Capacity Check
     if shape == "cylinder":
         V_tank = np.pi * r_inner**2 * tank_height
     else:
@@ -132,13 +157,9 @@ def main():
     rho_start = np.interp(T_start, mat_tank["T_grid"], mat_tank["rho_grid"])
     max_mass = V_tank * rho_start
     print(f"  [Info] Maximum capacity at {T_start}°C is ~{max_mass:.1f} kg.")
-    
     M_fluid = ask(f"Tank Fluid Mass (0-{max_mass:.0f} kg)", max_mass)
-    T_amb_mid = ask("Ambient Environment Temperature (°C)", 25.0)
-    T_water_in = ask("Coil Inlet Temperature (°C)", 80.0)
-    flow_m3h = ask("Coil Flow Rate (m3/h)", 1.0)
     
-    # 4. COIL DIMENSIONS
+    # 4. COIL PLACEMENT
     print("\n--- Coil Dimensions & Placement ---")
     d_in = ask("Coil Inner Diameter (m)", 0.0409)
     d_out = ask("Coil Outer Diameter (m)", 0.04826)
@@ -154,10 +175,11 @@ def main():
     dt_sec = ask("Time Step Size (seconds)", 1.0)
     snapshot_interval_hr = ask("Snapshot Interval (hours)", 0.1)
     
+    # 6. BUILD CONFIG
     cfg = config.with_defaults({
         "tank_shape": shape, "r_inner": r_inner, "tank_height": tank_height, "res": res,
         "d_in": d_in, "d_out": d_out, "t_wall": t_wall, "t_ins": t_ins, "k_ins": k_ins, "h_air": h_air,
-        "M_fluid": M_fluid, "T_start": T_start, "T_amb_mid": T_amb_mid,
+        "M_fluid": M_fluid, "T_start": T_start, "T_amb_low": T_amb_low, "T_target": T_target, "T_amb_mid": T_amb_mid,
         "T_water_in": T_water_in, "flow_m3h": flow_m3h,
         "dt_sec": dt_sec, "t_window_hr": t_window_hr, "snapshot_interval_hr": snapshot_interval_hr,
         "coil_clearance_bottom": bottom_clearance, "L_avail": L_avail,
@@ -170,6 +192,7 @@ def main():
     cfg["T_wall_arr"] = mat_wall["T_grid"]; cfg["k_wall_arr"] = mat_wall["k_grid"]
     cfg["rho_wall_arr"] = mat_wall["rho_grid"]; cfg["cp_wall_arr"] = mat_wall["cp_sens_grid"]
 
+    # 7. PHASE A
     print("\n--- Phase A Setup ---")
     num_R = ask("How many coil radii to compare? (1-5)", 3, int)
     min_R = ask("Minimum Radius to test (m)", r_inner * 0.3)
@@ -178,6 +201,7 @@ def main():
     
     radii_tested = save_combined_chart(cfg, mat_tank, min_R, max_R, num_R, max_turns, outdir)
     
+    # 8. SELECT COIL & RUN
     print("\n--- Coil Selection ---")
     R_coil = ask("Chosen Coil Radius (m)", radii_tested[-1])
     n_turns = ask("Chosen Coil Turns", max_turns // 2, int)

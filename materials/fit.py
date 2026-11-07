@@ -10,15 +10,12 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
     T_grid = np.linspace(T_min, T_max, n_points)
     
     def fit_col(col_name, default_val, log_space=False):
-        if col_name not in df.columns:
-            return np.full(n_points, default_val)
+        if col_name not in df.columns: return np.full(n_points, default_val)
         y = df[col_name].values.astype(float)
-        if log_space:
-            y = np.log(np.maximum(y, 1e-6))
+        if log_space: y = np.log(np.maximum(y, 1e-6))
         f = PchipInterpolator(T_data, y)
         res = f(T_grid)
-        if log_space:
-            res = np.exp(res)
+        if log_space: res = np.exp(res)
         return res
 
     rho_grid = fit_col('Density_kgm3', 1000.0)
@@ -34,24 +31,32 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
     else:
         latent_grid = np.zeros(n_points)
 
-    # Find Melt Band
+    # Dynamically Find Melt Band based on Phase column
     T_ms = np.nan
     T_me = np.nan
     if 'Phase' in df.columns:
-        for idx, row in df.iterrows():
-            if 'Melt Start' in str(row['Phase']): T_ms = row['Temperature_C']
-            if 'End of Melt' in str(row['Phase']): T_me = row['Temperature_C']
-            
-    if not np.isnan(T_ms) and not np.isnan(T_me):
-        latent_grid[(T_grid < T_ms) | (T_grid > T_me)] = 0.0
-    else:
-        latent_grid[:] = 0.0
+        solid_df = df[df['Phase'] == 'Solid']
+        liquid_df = df[df['Phase'].isin(['Liquid', 'Gas'])]
         
-    # Calculate effective heat capacity (sensible + phase change)
-    dLdT = np.gradient(latent_grid, T_grid)
+        if not solid_df.empty and not liquid_df.empty:
+            T_ms = solid_df['Temperature_C'].max()
+            T_me = liquid_df['Temperature_C'].min()
+            # Widen the band slightly if it's razor-thin (like water) so the math doesn't break
+            if T_me - T_ms < 0.5:
+                T_ms -= 0.1
+                T_me += 0.1
+        elif not solid_df.empty and liquid_df.empty:
+            T_ms = solid_df['Temperature_C'].max()
+            T_me = T_ms
+        elif solid_df.empty and not liquid_df.empty:
+            T_ms = liquid_df['Temperature_C'].min()
+            T_me = T_ms
+            
+    # Calculate effective heat capacity
+    # We use absolute gradient so latent heat always adds thermal mass
+    dLdT = np.abs(np.gradient(latent_grid, T_grid))
     cp_eff_grid = cp_sens_grid + dLdT
     
-    # Clamp to prevent non-monotonic enthalpy
     min_cp = 0.05 * cp_sens_grid
     cp_eff_grid = np.maximum(cp_eff_grid, min_cp)
     
@@ -70,17 +75,13 @@ def fit_material(df, T_min=-50.0, T_max=200.0, n_points=400):
         between = ~(below | above)
         fs_grid[below] = 1.0
         fs_grid[above] = 0.0
-        fs_grid[between] = (T_me - T_grid[between]) / (T_me - T_ms)
+        if T_me > T_ms:
+            fs_grid[between] = (T_me - T_grid[between]) / (T_me - T_ms)
     
     return {
-        'T_grid': T_grid,
-        'rho_grid': rho_grid,
-        'cp_sens_grid': cp_sens_grid,
-        'cp_eff_grid': cp_eff_grid,
-        'k_grid': k_grid,
-        'mu_grid': mu_grid,
-        'H_grid': H_grid,
-        'fs_grid': fs_grid,
-        'T_ms': T_ms,
-        'T_me': T_me
+    'T_grid': T_grid, 'rho_grid': rho_grid, 'cp_sens_grid': cp_sens_grid,
+    'cp_eff_grid': cp_eff_grid, 'k_grid': k_grid, 'mu_grid': mu_grid,
+    'H_grid': H_grid, 'fs_grid': fs_grid, 'latent_grid': latent_grid,
+    'T_ms': float(T_ms) if not np.isnan(T_ms) else np.nan, # <--- FIXED
+    'T_me': float(T_me) if not np.isnan(T_me) else np.nan  # <--- FIXED
     }
