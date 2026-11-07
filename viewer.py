@@ -1,6 +1,7 @@
 # viewer.py
 import glob
 import os
+import json
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -14,6 +15,17 @@ def create_interactive_viewer(run_folder):
         print("No snapshots found!"); return
         
     print(f"Found {len(files)} snapshots. Building viewer...")
+    
+    # Load Drain/Fill locations
+    drain_coords = None
+    fill_coords = None
+    info_path = os.path.join(run_folder, "run_info.json")
+    if os.path.exists(info_path):
+        with open(info_path, "r") as f:
+            info = json.load(f)
+            drain_coords = info.get("drain_coords")
+            fill_coords = info.get("fill_coords")
+    
     frames, times, avg_temps = [], [], []
     global_T_min, global_T_max = 1000.0, -1000.0
 
@@ -30,15 +42,11 @@ def create_interactive_viewer(run_folder):
     for i, f in enumerate(files):
         data = np.load(f)
         T, t_hr = data["T"], data["t_hr"]
-        
-        # --- THE FIX IS HERE ---
-        # Order must match T_3d[x, y, z]
         x, y, z = np.indices((res, res, res))
         
         m = data["m"]
         active_mask = (m > 1e-6)
         
-        # Shift X and Y to center at 0, leave Z alone (height)
         x_a = x[active_mask] - center
         y_a = y[active_mask] - center
         z_a = z[active_mask]
@@ -71,6 +79,30 @@ def create_interactive_viewer(run_folder):
     fig.add_trace(frames[0].data[0], row=1, col=1)
     fig.add_trace(frames[0].data[1], row=2, col=1)
 
+    # --- DRAIN AND FILL MARKERS ---
+    if drain_coords:
+        fig.add_trace(
+            go.Scatter3d(
+                x=[drain_coords[0] - center], y=[drain_coords[1] - center], z=[drain_coords[2]],
+                mode='markers', 
+                marker=dict(size=15, color='red', symbol='cross', line=dict(width=2)),
+                name='Drain'
+            ),
+            row=1, col=1
+        )
+        
+    if fill_coords:
+        fig.add_trace(
+            go.Scatter3d(
+                x=[fill_coords[0] - center], y=[fill_coords[1] - center], z=[fill_coords[2]],
+                mode='markers', 
+                marker=dict(size=12, color='blue', symbol='circle', line=dict(width=1)),
+                name='Fill'
+            ),
+            row=1, col=1
+        )
+    # ----------------------------------
+
     # Ghost cylinder
     theta = np.linspace(0, 2*np.pi, 100)
     z_wall = np.linspace(0, res, 100)
@@ -95,7 +127,6 @@ def create_interactive_viewer(run_folder):
         steps=[dict(method="animate", args=[[f.name], dict(mode="immediate", frame=dict(duration=0, redraw=True))], label=f.name) for f in frames]
     )]
 
-    # LOCK AXES
     fig.update_layout(
         title="3D Tank Thermal Dashboard",
         scene=dict(

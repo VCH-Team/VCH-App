@@ -19,7 +19,7 @@ def apply(grid, state, mat, cfg, dt, drain_cell_idx, drain_area):
     if not flowable:
         return
 
-    # Find the surface
+    # Find the surface height above the drain
     surf_z = grid.zc[drain_cell_idx]
     col_idx = -1
     for i in range(len(grid.col_start)):
@@ -41,16 +41,23 @@ def apply(grid, state, mat, cfg, dt, drain_cell_idx, drain_area):
     h_head = max(surf_z - grid.zc[drain_cell_idx], 0.01) 
     rho_d = state.rho[drain_cell_idx]
     
-    # --- NEW PHYSICS: Cd depends on Reynolds number ---
-    # First, guess the velocity with Cd=0.6 to get a rough Re
-    v_guess = 0.6 * np.sqrt(2.0 * 9.81 * h_head)
+    # Calculate velocity with Torricelli + constant pressure
+    pressure_term = 2.0 * cfg.get("drain_pressure_pa", 0.0) / rho_d
+    v_guess = 0.6 * np.sqrt(2.0 * 9.81 * h_head + pressure_term)
     D_hole = np.sqrt(4.0 * drain_area / np.pi)
     Re = rho_d * v_guess * D_hole / max(1e-6, state.mu[drain_cell_idx])
     
     Cd = closures.cd_reynolds(Re)
-    v = Cd * np.sqrt(2.0 * 9.81 * h_head)
+    v = Cd * np.sqrt(2.0 * 9.81 * h_head + pressure_term)
     
     target_dm = rho_d * v * drain_area * dt
+    
+    # Apply max flowrate cap if specified
+    max_flow = cfg.get("drain_max_flow_m3h", 0.0)
+    if max_flow > 0:
+        max_mdot = max_flow * rho_d / 3600.0
+        target_dm = min(target_dm, max_mdot * dt)
+        
     actual_dm = min(target_dm, m_drain)
     
     if actual_dm > 0.0:

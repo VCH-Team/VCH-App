@@ -138,6 +138,11 @@ DEFAULTS = {
     "fill_mode": dict(group="fill", label="Fill behaviour", type="choice", default=0,
                       choices=[(0, "Constant"), (1, "Heating only"), (2, "Cooling only")],
                       visible_if=("simulate_fill", True)),
+    "drain_pressure_pa": {"default": 0.0, "type": float, "group": "drain"},
+    "drain_max_flow_m3h": {"default": 0.0, "type": float, "group": "drain"}, # 0 = unlimited
+    "fill_pressure_pa": {"default": 0.0, "type": float, "group": "fill"},
+    "fill_max_flow_m3h": {"default": 0.0, "type": float, "group": "fill"}, # 0 = unlimited
+    "fill_spread": {"default": True, "type": bool, "group": "fill"},
 
     # ------------------------------------------------------------- physics
     "beta_liq": dict(group="physics", label="Liquid thermal expansion coeff beta",

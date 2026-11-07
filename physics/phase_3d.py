@@ -1,16 +1,19 @@
 # physics/phase_3d.py
 import numpy as np
+import json
+import os
 from physics import grid as grid_module
 from physics import state as state_module
 from physics import loop
 from physics.operators import coil
 
-def find_closest_cell(grid, r, theta, z):
-    if r <= 0.0:
-        xc, yc = 0.0, 0.0
+def find_closest_cell(grid, shape, p1, p2, z):
+    if shape == "cylinder":
+        xc = p1 * np.cos(np.deg2rad(p2)) if p1 > 0 else 0.0
+        yc = p1 * np.sin(np.deg2rad(p2)) if p1 > 0 else 0.0
     else:
-        xc = r * np.cos(np.deg2rad(theta))
-        yc = r * np.sin(np.deg2rad(theta))
+        xc = p1
+        yc = p2
         
     dist_sq = (grid.xc - xc)**2 + (grid.yc - yc)**2 + (grid.zc - z)**2
     return int(np.argmin(dist_sq))
@@ -24,15 +27,35 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
     if coil_segs is None:
         raise ValueError("Coil radius is entirely outside the tank!")
         
+    # --- DRAIN MAPPING ---
     drain_idx = -1
     if cfg.get("simulate_drain", False):
-        drain_idx = find_closest_cell(grid, cfg["drain_r"], cfg["drain_theta"], cfg["drain_z"])
+        shape = cfg.get("tank_shape", "cylinder")
+        if shape == "cylinder":
+            drain_idx = find_closest_cell(grid, shape, cfg["drain_r"], cfg["drain_theta"], cfg["drain_z"])
+        else:
+            drain_idx = find_closest_cell(grid, shape, cfg["drain_x"], cfg["drain_y"], cfg["drain_z"])
         print(f"  Drain mapped to cell {drain_idx}")
         
+    # --- FILL MAPPING ---
     fill_idx = -1
     if cfg.get("simulate_fill", False):
-        fill_idx = find_closest_cell(grid, cfg["fill_r"], cfg["fill_theta"], cfg["fill_z"])
+        shape = cfg.get("tank_shape", "cylinder")
+        if shape == "cylinder":
+            fill_idx = find_closest_cell(grid, shape, cfg["fill_r"], cfg["fill_theta"], cfg["fill_z"])
+        else:
+            fill_idx = find_closest_cell(grid, shape, cfg["fill_x"], cfg["fill_y"], cfg["fill_z"])
         print(f"  Fill mapped to cell {fill_idx}")
+        
+    # --- SAVE RUN INFO FOR VIEWER ---
+    run_info = {
+        "drain_coords": grid.cell_coords[drain_idx].tolist() if drain_idx >= 0 else None,
+        "fill_coords": grid.cell_coords[fill_idx].tolist() if fill_idx >= 0 else None,
+        "res": cfg["res"]
+    }
+    with open(os.path.join(outdir, "run_info.json"), "w") as f:
+        json.dump(run_info, f)
+    # --------------------------------
     
     n_cycles = cfg.get("N_cycles", 1)
     results = {
