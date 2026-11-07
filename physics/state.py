@@ -4,10 +4,10 @@ from numba import njit, prange
 
 M_EPS = 1e-12
 
-@njit(cache=True)
+@njit(parallel=True, cache=True)
 def _initial_fill(m, H, V, col_cells, col_start, col_len, f, rho_start, h_start):
     n_cols = col_start.shape[0]
-    for col in range(n_cols):
+    for col in prange(n_cols):
         s = col_start[col]
         n = col_len[col]
         col_vol = 0.0
@@ -27,11 +27,11 @@ def _initial_fill(m, H, V, col_cells, col_start, col_len, f, rho_start, h_start)
                 m[c] = 0.0
             H[c] = m[c] * h_start
 
-@njit(cache=True)
+@njit(parallel=True, cache=True)
 def _derive(m, H, V, h_empty, has_melt, H_solid, H_liquid,
             T_grid, H_grid, rho_grid, k_grid, mu_grid, cp_eff_grid,
             T, rho, k, mu, fs, cp_eff, cap, fill):
-    for c in range(m.shape[0]):
+    for c in prange(m.shape[0]):
         h = H[c] / m[c] if m[c] > M_EPS else h_empty
         Tc = np.interp(h, H_grid, T_grid)
         T[c] = Tc
