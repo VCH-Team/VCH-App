@@ -67,10 +67,16 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
     total_hr = 0.0
     for c in range(n_cycles):
         print(f"\n--- CYCLE {c+1}/{n_cycles} ---")
+        
+        # --- HEATING PHASE ---
         m_out_start = state.m_out_cum
         m_in_start = state.m_in_cum
         E_coil_start = state.E_coil_cum
+        E_loss_start = state.E_loss_cum
         start_mass = state.total_mass()
+        
+        valid_cells = state.m > 1e-6
+        start_temp = np.mean(state.T[valid_cells]) if np.any(valid_cells) else 0.0
         
         print("Starting Heating Phase...")
         snaps, status = loop.run_chunk(
@@ -86,31 +92,46 @@ def run_simulation(cfg, mat, R_coil, n_turns, outdir, progress_cb=None, cancel_f
             results["cancelled"] = True
             break
             
-        if c < n_cycles - 1 or cfg.get("cool_down_at_end", False):
-            print("Starting Cooling Phase...")
-            snaps, status = loop.run_chunk(
-                grid, state, mat, cfg, coil_segs, drain_idx, fill_idx, 
-                cfg["t_cooldown_hr"], outdir, total_hr, 
-                progress_cb=progress_cb, cancel_flag=cancel_flag, is_heating=False
-            )
-            results["snapshots"].extend(snaps)
-            results["status_log"].extend(status)
-            total_hr += cfg["t_cooldown_hr"]
-            
+        # --- COOLING PHASE ---
+        print("Starting Cooling Phase...")
+        snaps, status = loop.run_chunk(
+            grid, state, mat, cfg, coil_segs, drain_idx, fill_idx, 
+            cfg["t_cooldown_hr"], outdir, total_hr, 
+            progress_cb=progress_cb, cancel_flag=cancel_flag, is_heating=False
+        )
+        results["snapshots"].extend(snaps)
+        results["status_log"].extend(status)
+        total_hr += cfg["t_cooldown_hr"]
+        
         if cancel_flag and cancel_flag.is_set():
             results["cancelled"] = True
             break
             
+        # --- CALCULATE CYCLE METRICS ---
         cycle_m_out = state.m_out_cum - m_out_start
         cycle_m_in = state.m_in_cum - m_in_start
         cycle_E_coil = state.E_coil_cum - E_coil_start
+        cycle_E_loss = state.E_loss_cum - E_loss_start
         end_mass = state.total_mass()
+        
+        valid_cells = state.m > 1e-6
+        end_temp = np.mean(state.T[valid_cells]) if np.any(valid_cells) else 0.0
+        
         eff = (cycle_m_out / start_mass * 100.0) if start_mass > 0 else 0.0
         
         results["cycle_metrics"].append({
-            "cycle": c + 1, "start_mass": start_mass, "remaining_mass": end_mass,
-            "extracted_kg": cycle_m_out, "filled_kg": cycle_m_in, "extracted_temp_avg": state.T_coil_out,
-            "efficiency_pct": eff, "utilisation_pct": 100.0, "fill_util_pct": 100.0,
+            "cycle": c + 1, 
+            "start_mass": start_mass, 
+            "remaining_mass": end_mass,
+            "start_temp": start_temp,
+            "end_temp": end_temp,
+            "extracted_kg": cycle_m_out, 
+            "filled_kg": cycle_m_in, 
+            "extracted_temp_avg": state.T_coil_out,
+            "efficiency_pct": eff,
+            "E_coil_kwh": cycle_E_coil / 3.6e6,
+            "E_loss_kwh": cycle_E_loss / 3.6e6,
+            "utilisation_pct": 100.0, "fill_util_pct": 100.0,
             "heatmaps": [], "massmaps": [],
             "snapshot_times": [float(f.split('_')[-1].replace('.npz','')) for f in snaps]
         })
