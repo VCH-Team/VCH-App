@@ -1,26 +1,48 @@
-﻿# Project-specific
-materials/cache/*.npz
-materials/plots/*.png
-out/
-baseline/*
-!baseline/.gitkeep
+# ==========================================
+# Project-specific (Simulation & Data)
+# ==========================================
+# Generated Simulation Outputs (HTMLs, Snapshots)
+testout/
+
+# Generated Caches (Numba .npz files)
+setup/cache/
+
+# Generated Property Plots
+data/plots/
+
+# Generated Database (Built from VCH_Data.sql)
+data/VCH_Data.db
+
+# Logs & Environment Variables
 *.log
 .env
 
+# ==========================================
 # Python
+# ==========================================
 __pycache__/
 *.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
-.venv/
-venv/
 
+# ==========================================
+# Environments
+# ==========================================
+venv/
+env/
+.venv/
+
+# ==========================================
 # Build artifacts
+# ==========================================
 build/
 dist/
 *.spec
 
-# OS
+# ==========================================
+# OS Files
+# ==========================================
 .DS_Store
 Thumbs.db
 desktop.ini
-testout/
