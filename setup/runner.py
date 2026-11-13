@@ -11,7 +11,7 @@ from setup.grid_builder import Grid, build_coil_segments
 from kernel.numba_kernel_cycle import mega_kernel_cycle
 from engine.state import initial_fill_kernel, derive_properties_kernel
 from engine.operators.settle import settle_kernel
-from IO import viewer, report, dashboard
+from viz import viewer, report, dashboard
 
 def find_closest_cell(grid, shape, r, theta, x, y, z):
     if shape == "cylinder":
