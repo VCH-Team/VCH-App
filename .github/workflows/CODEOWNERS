@@ -1,0 +1,18 @@
+﻿# Default — nobody without explicit assignment
+*                         @Sambridda
+
+# Physics (ME Team Lead)
+physics/                  @yeezus-afk @Sambridda
+materials/                @yeezus-afk @Sambridda
+
+# Application (CE Team Lead)
+gui/                      @RisanShrestha05
+app/                      @RisanShrestha05
+installer/                @RisanShrestha05
+io/                       @RisanShrestha05
+
+# Director territory
+main.py                   @Sambridda
+docs/contracts/           @Sambridda
+docs/decisions/           @Sambridda
+.github/                  @Sambridda
