@@ -1,20 +1,48 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-
-# Simulation Outputs (Too large & generated automatically)
+# ==========================================
+# Project-specific (Simulation & Data)
+# ==========================================
+# Generated Simulation Outputs (HTMLs, Snapshots)
 testout/
 
-# Generated Caches
+# Generated Caches (Numba .npz files)
 setup/cache/
+
+# Generated Property Plots
 data/plots/
 
 # Generated Database (Built from VCH_Data.sql)
 data/VCH_Data.db
 
+# Logs & Environment Variables
+*.log
+.env
+
+# ==========================================
+# Python
+# ==========================================
+__pycache__/
+*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# ==========================================
 # Environments
+# ==========================================
 venv/
 env/
 .venv/
+
+# ==========================================
+# Build artifacts
+# ==========================================
+build/
+dist/
+*.spec
+
+# ==========================================
+# OS Files
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
