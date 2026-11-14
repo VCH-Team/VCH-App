@@ -34,7 +34,7 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
         if fs[c] >= fs_lock:
             continue
             
-        # Mid-air check: Don't flatten if fluid is falling
+        # FIX: Prevent flattening if falling
         if nbr[c, 4] >= 0 and m[nbr[c, 4]] <= 1e-9:
             continue
             
@@ -54,10 +54,11 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 q_vol = (g * h_film**3 / (3.0 * max(1e-6, nu))) * (local_dh / d_face)
                 mdot = q_vol * rho[c] * d_face
                 
-                # Limit to 10% of mass per face to prevent negative mass
+                # Limit to 10% to prevent negative mass
                 moved = min(mdot * dt, m[c] * 0.1)
                 moved = min(moved, V[n] * rho[n] - m[n])
                 
+                # FIX: Strictly check moved > 1e-9 to prevent negative mass transfer
                 if moved > 1e-9:
                     h_spec = H[c] / m[c]
                     dm[c] -= moved
@@ -72,7 +73,6 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 q_vol = (g * h_film**3 / (3.0 * max(1e-6, nu))) * (-local_dh / d_face)
                 mdot = q_vol * rho[n] * d_face
                 
-                # Limit to 10% of mass per face
                 moved = min(mdot * dt, m[n] * 0.1)
                 moved = min(moved, V[c] * rho[c] - m[c])
                 
