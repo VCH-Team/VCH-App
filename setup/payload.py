@@ -177,8 +177,8 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         K_settle=float(cfg["K_settle"]),
         K_flatten=float(cfg["K_flatten"]),
         tank_shape_id=shape_id,
-        res=int(cfg["res"]),
-        dz=float(cfg["tank_height"] / cfg["res"]),
+        res=int(grid.res_x),                # <--- UPDATED
+        dz=float(grid.dz),                  # <--- UPDATED
         T_start=float(cfg["T_start"]), 
         
         T_amb_mid=float(cfg["T_amb_mid"]),
@@ -190,6 +190,8 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         dT_natural=float(cfg["dT_natural"]),
         thresh_liq=float(cfg["thresh_liq"]),
         thresh_visc=float(cfg["thresh_visc"]),
+        
+        # ... (rest of the ncfg remains the same)
         
         m_dot_coil=m_dot_coil,
         rho_c=rho_c,

@@ -28,7 +28,6 @@ def apply_fill(m, H, mat, ncfg, ngrid):
     if dm <= 0.0:
         return 0.0, 0.0
         
-    # Distribute across target cells
     target_cells = np.zeros(5, dtype=np.int32)
     num_targets = 0
     
@@ -49,7 +48,6 @@ def apply_fill(m, H, mat, ncfg, ngrid):
     for i in range(num_targets):
         target = target_cells[i]
         
-        # FIX: Always check physical capacity, even if fill_spread is True
         cap = ngrid.V[target] * rho_fill
         space = max(0.0, cap - m[target])
         

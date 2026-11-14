@@ -76,15 +76,17 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
     dx = (2 * cfg["r_inner"]) / cfg["res"] if cfg["tank_shape"] == "cylinder" else cfg["tank_length"] / cfg["res"]
     dz = cfg["tank_height"] / cfg["res"]
     
+    # 5. Save run_info.json
     run_info = {
         "drain_coords": grid.cell_coords[drain_idx].tolist() if drain_idx >= 0 else None,
         "fill_coords": grid.cell_coords[fill_idx].tolist() if fill_idx >= 0 else None,
-        "res": cfg["res"], "shape": cfg["tank_shape"], "r_inner": cfg["r_inner"], 
+        "res_x": grid.res_x, "res_y": grid.res_y, "res_z": grid.res_z,
+        "dx": grid.dx, "dy": grid.dy, "dz": grid.dz,
+        "shape": cfg["tank_shape"], "r_inner": cfg["r_inner"], 
         "tank_length": cfg["tank_length"], "tank_width": cfg["tank_width"],
         "tank_height": cfg["tank_height"], "t_wall": cfg["t_wall"], "t_ins": cfg["t_ins"], 
         "max_tank_mass": ncfg.max_tank_mass,
         "slice_angles": slice_angles,
-        "dx": dx, "dz": dz,
         "coil_weight_kg": weight_tube, "coil_length_m": L_total
     }
     with open(os.path.join(outdir, "run_info.json"), "w") as f_out:
@@ -155,9 +157,10 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         print(f"  Cycle finished in {time.time() - t0:.1f} seconds.")
         
         # Save Data
-        file_writer.save_snapshots_3d(cycle_dir, snapshots_T[:actual_snaps], snapshots_m[:actual_snaps], snapshots_fill[:actual_snaps], 
-                                      actual_snaps, grid, cfg["res"], cfg["dt_sec"], cfg["snapshot_interval_hr"])
-        
+        file_writer.save_snapshots_3d(
+            cycle_dir, snapshots_T[:actual_snaps], snapshots_m[:actual_snaps], snapshots_fill[:actual_snaps], 
+            actual_snaps, grid, cfg["dt_sec"], cfg["snapshot_interval_hr"]
+        )
         file_writer.save_results_json(cycle_dir, np.array([cycle_summary_row]), 1, ncfg, np.sum(m), m_out, m_in)
         
         all_cycle_metrics.append(cycle_summary_row)

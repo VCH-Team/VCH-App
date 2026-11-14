@@ -30,11 +30,12 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
     dm = np.zeros(N)
     dH = np.zeros(N)
     
+    # PASS 1: Calculate local flux (Thread-Safe!)
     for c in prange(N):
         if fs[c] >= fs_lock:
             continue
             
-        # FIX: Prevent flattening if falling
+        # Mid-air check
         if nbr[c, 4] >= 0 and m[nbr[c, 4]] <= 1e-9:
             continue
             
@@ -45,6 +46,7 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 
             local_dh = col_height[c] - col_height[n]
             
+            # Case A: Cell c is HIGHER (Donor)
             if local_dh > 1e-6:
                 if m[c] <= 1e-9 or m[n] >= V[n] * rho[n] - 1e-9:
                     continue
@@ -54,16 +56,15 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 q_vol = (g * h_film**3 / (3.0 * max(1e-6, nu))) * (local_dh / d_face)
                 mdot = q_vol * rho[c] * d_face
                 
-                # Limit to 10% to prevent negative mass
                 moved = min(mdot * dt, m[c] * 0.1)
                 moved = min(moved, V[n] * rho[n] - m[n])
                 
-                # FIX: Strictly check moved > 1e-9 to prevent negative mass transfer
                 if moved > 1e-9:
                     h_spec = H[c] / m[c]
                     dm[c] -= moved
                     dH[c] -= moved * h_spec
                     
+            # Case B: Cell c is LOWER (Receiver)
             elif local_dh < -1e-6:
                 if m[n] <= 1e-9 or m[c] >= V[c] * rho[c] - 1e-9:
                     continue
@@ -81,9 +82,10 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                     dm[c] += moved
                     dH[c] += moved * h_spec
 
+    # PASS 2: Apply fluxes safely
     for c in prange(N):
-        m[c] += dm[c]
-        H[c] += dH[c]
+        m[c] = max(0.0, m[c] + dm[c])
+        H[c] = max(0.0, H[c] + dH[c])
 
 @njit(cache=True)
 def apply_flatten(m, H, rho, mu, fs, ncfg, ngrid):
