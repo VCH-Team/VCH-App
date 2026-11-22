@@ -22,21 +22,17 @@ def _compute_column_heights(m, rho, V, dz, col_cells, col_start, col_len, col_he
             c = col_cells[start + q]
             col_height[c] = eff_h
 
-@njit(parallel=True, fastmath=True, cache=True)
+# NO PARALLEL: This must run serially to prevent multi-threaded mass loss
+@njit(cache=True) 
 def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
     N = m.shape[0]
     g = 9.81
     
-    dm_in = np.zeros(N)
-    dH_in = np.zeros(N)
-    dm_out = np.zeros(N)
-    dH_out = np.zeros(N)
+    dm = np.zeros(N)
+    dH = np.zeros(N)
     
-    for c in prange(N):
+    for c in range(N): 
         if fs[c] >= fs_lock:
-            continue
-            
-        if nbr[c, 4] >= 0 and m[nbr[c, 4]] <= 1e-9:
             continue
             
         for f in range(4):
@@ -46,26 +42,39 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 
             local_dh = col_height[c] - col_height[n]
             
+            # Case A: Cell c is HIGHER, so it loses mass to n
             if local_dh > 1e-6:
-                if m[c] <= 1e-9 or m[n] >= V[n] * rho[n] - 1e-9:
+                if m[c] <= 1e-9: 
                     continue
+                space = V[n] * rho[n] - m[n]
+                if space <= 1e-9: 
+                    continue
+                
                 h_film = (m[c] / (rho[c] * V[c])) * dz
                 nu = mu[c] / max(1e-6, rho[c])
                 d_face = np.sqrt(V[c] / dz)
                 q_vol = (g * h_film**3 / (3.0 * max(1e-6, nu))) * (local_dh / d_face)
                 mdot = q_vol * rho[c] * d_face
                 
+                # Limit to 10% of mass per face to prevent negative mass
                 moved = min(mdot * dt, m[c] * 0.1)
-                moved = min(moved, V[n] * rho[n] - m[n])
+                moved = min(moved, space)
                 
                 if moved > 1e-9:
                     h_spec = H[c] / m[c]
-                    dm_out[c] += moved
-                    dH_out[c] += moved * h_spec
+                    dm[c] -= moved
+                    dH[c] -= moved * h_spec
+                    dm[n] += moved
+                    dH[n] += moved * h_spec
                     
+            # Case B: Cell c is LOWER, so it gains mass from n
             elif local_dh < -1e-6:
-                if m[n] <= 1e-9 or m[c] >= V[c] * rho[c] - 1e-9:
+                if m[n] <= 1e-9: 
                     continue
+                space = V[c] * rho[c] - m[c]
+                if space <= 1e-9: 
+                    continue
+                
                 h_film = (m[n] / (rho[n] * V[n])) * dz
                 nu = mu[n] / max(1e-6, rho[n])
                 d_face = np.sqrt(V[n] / dz)
@@ -73,16 +82,19 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 mdot = q_vol * rho[n] * d_face
                 
                 moved = min(mdot * dt, m[n] * 0.1)
-                moved = min(moved, V[c] * rho[c] - m[c])
+                moved = min(moved, space)
                 
                 if moved > 1e-9:
                     h_spec = H[n] / m[n]
-                    dm_in[c] += moved
-                    dH_in[c] += moved * h_spec
+                    dm[c] += moved
+                    dH[c] += moved * h_spec
+                    dm[n] -= moved
+                    dH[n] -= moved * h_spec
 
-    for c in prange(N):
-        m[c] += dm_in[c] - dm_out[c]
-        H[c] += dH_in[c] - dH_out[c]
+    # Apply fluxes safely
+    for c in range(N): 
+        m[c] += dm[c]
+        H[c] += dH[c]
 
 @njit(cache=True)
 def apply_flatten(m, H, rho, mu, fs, ncfg, ngrid, dt):

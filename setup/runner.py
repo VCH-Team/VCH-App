@@ -34,6 +34,7 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
     drain_idx = -1
     drain_col_idx = -1
     fill_idx = -1
+    fill_col_idx = -1  # <--- NEW
     
     if cfg["simulate_drain"]:
         drain_idx = find_closest_cell(grid, cfg["tank_shape"], cfg["drain_r"], cfg["drain_theta"], cfg["drain_x"], cfg["drain_y"], cfg["drain_z"])
@@ -46,17 +47,29 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
                 
     if cfg["simulate_fill"]:
         fill_idx = find_closest_cell(grid, cfg["tank_shape"], cfg["fill_r"], cfg["fill_theta"], cfg["fill_x"], cfg["fill_y"], cfg["fill_z"])
+        # Find which vertical column this fill belongs to
+        for i in range(len(grid.col_start)):
+            start = grid.col_start[i]
+            length = grid.col_len[i]
+            if fill_idx in grid.col_cells[start:start+length]:
+                fill_col_idx = i
+                break
         
     # 3. Build Payload
     ncfg, ngrid, nm = payload.build_payload(
         cfg, mat_tank, mat_coil, mat_tube, mat_wall, 
-        grid, coil_segs, drain_idx, fill_idx, drain_col_idx
+        grid, coil_segs, drain_idx, fill_idx, drain_col_idx, fill_col_idx # <--- ADDED fill_col_idx
     )
     
     # 4. Initial State & Pre-Compaction
     N_cells = grid.N
     m = np.zeros(N_cells)
     H = np.zeros(N_cells)
+    
+    # NEW: Initialize Falling Block State [mass, enthalpy, z_position, velocity]
+    fall_state = np.zeros(4)
+    fall_state[2] = cfg["tank_height"]
+    fall_state[3] = 0.0
     
     rho_start = np.interp(cfg["T_start"], mat_tank["T_grid"], mat_tank["rho_grid"])
     M_initial = cfg.get("M_fluid", rho_start * grid.V.sum())
@@ -65,22 +78,18 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
     
     initial_fill_kernel(m, H, ngrid.V, ngrid.col_cells, ngrid.col_start, ngrid.col_len, f, rho_start, h_start)
     
-        # Pre-compact (large dt)
+    # Pre-compact (large dt)
     dummy_T = np.zeros(N_cells); dummy_rho = np.zeros(N_cells); dummy_k = np.zeros(N_cells)
     dummy_mu = np.zeros(N_cells); dummy_fs = np.zeros(N_cells); dummy_cp_eff = np.zeros(N_cells)
-    dummy_cp_sens = np.zeros(N_cells) # <--- ADD THIS
+    dummy_cp_sens = np.zeros(N_cells)
     dummy_cap = np.zeros(N_cells); dummy_ff = np.zeros(N_cells)
     
     derive_properties_kernel(
         m, H, ngrid.V, h_start, nm, 
         dummy_T, dummy_rho, dummy_k, dummy_mu, dummy_fs, 
-        dummy_cp_eff, dummy_cp_sens, dummy_cap, dummy_ff # <--- PASS IT HERE
+        dummy_cp_eff, dummy_cp_sens, dummy_cap, dummy_ff 
     )
-    settle_kernel(m, H, ngrid.V, dummy_rho, dummy_fs, ngrid.col_cells, ngrid.col_start, ngrid.col_len, ncfg.fs_lock, 100.0, ncfg.dz)
-    
-    # 5. Save run_info.json
-    dx = (2 * cfg["r_inner"]) / cfg["res"] if cfg["tank_shape"] == "cylinder" else cfg["tank_length"] / cfg["res"]
-    dz = cfg["tank_height"] / cfg["res"]
+    settle_kernel(m, H, ngrid.V, dummy_rho, dummy_fs, ngrid.col_cells, ngrid.col_start, ngrid.col_len, ncfg.fs_lock)
     
     # 5. Save run_info.json
     run_info = {
@@ -119,7 +128,8 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         snapshots_m = np.zeros((max_snaps, N_cells), dtype=dtype)
         snapshots_fill = np.zeros((max_snaps, N_cells), dtype=dtype)
         
-        cycle_summary_row = np.zeros(12, dtype=np.float64)
+        # Changed from 12 to 14 to include start/end mass
+        cycle_summary_row = np.zeros(14, dtype=np.float64)
         progress_tracker = np.zeros(2, dtype=np.float64)
         cancel_flag = np.zeros(1, dtype=np.int32)
         
@@ -141,21 +151,22 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         monitor_thread.start()
         
         try:
-            # CHANGE THIS LINE to catch the new return values
-            actual_snaps, m_in, m_out, m_resid, H_resid = mega_kernel_cycle(
-                ncfg, ngrid, nm, m, H,
+            # Unpack the 6 return values from the kernel
+            actual_snaps, m_in, m_out, final_m, m_resid, H_resid = mega_kernel_cycle(
+                ncfg, ngrid, nm, m, H, fall_state, 
                 snapshots_T, snapshots_m, snapshots_fill, max_snaps,
                 cycle_summary_row, progress_tracker, cancel_flag
             )
             
-            # ADD THIS PRINT AFTER the kernel finishes
+            # Print audit results
             if abs(m_resid) > 1e-4:
                 print(f"  [WARNING] Mass Residual: {m_resid:.4f} kg | Energy Residual: {H_resid:.4e} J")
+                
         except KeyboardInterrupt:
             print("\n\n  [Stop Requested] Saving state and aborting cycle...")
             cancel_flag[0] = 1
-            actual_snaps, m_in, m_out = mega_kernel_cycle(
-                ncfg, ngrid, nm, m, H,
+            actual_snaps, m_in, m_out, final_m, m_resid, H_resid = mega_kernel_cycle(
+                ncfg, ngrid, nm, m, H, fall_state, 
                 snapshots_T, snapshots_m, snapshots_fill, max_snaps,
                 cycle_summary_row, progress_tracker, cancel_flag
             )
@@ -172,7 +183,9 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
             cycle_dir, snapshots_T[:actual_snaps], snapshots_m[:actual_snaps], snapshots_fill[:actual_snaps], 
             actual_snaps, grid, cfg["dt_sec"], cfg["snapshot_interval_hr"]
         )
-        file_writer.save_results_json(cycle_dir, np.array([cycle_summary_row]), 1, ncfg, np.sum(m), m_out, m_in)
+        
+        # Use final_m from the kernel return (which includes fall_state)
+        file_writer.save_results_json(cycle_dir, np.array([cycle_summary_row]), 1, ncfg, final_m, m_out, m_in)
         
         all_cycle_metrics.append(cycle_summary_row)
         
@@ -197,7 +210,7 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         total_m_out = np.sum(all_cycle_metrics_np[:, 10])
         total_m_in = np.sum(all_cycle_metrics_np[:, 11])
         
-        file_writer.save_results_json(final_dir, all_cycle_metrics_np, len(all_cycle_metrics), ncfg, np.sum(m), total_m_out, total_m_in)
+        file_writer.save_results_json(final_dir, all_cycle_metrics_np, len(all_cycle_metrics), ncfg, final_m, total_m_out, total_m_in)
         
         # Copy run_info to final summary too
         with open(os.path.join(final_dir, "run_info.json"), "w") as f_out:
