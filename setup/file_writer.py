@@ -3,16 +3,17 @@ import os
 import json
 import numpy as np
 
-def save_snapshots_3d(outdir, snapshots_T, snapshots_m, snapshots_fill, actual_snaps, grid, res, dt_sec, snapshot_interval_hr):
+def save_snapshots_3d(outdir, snapshots_T, snapshots_m, snapshots_fill, actual_snaps, grid, dt_sec, snapshot_interval_hr):
     snap_dir = os.path.join(outdir, "snapshots")
     os.makedirs(snap_dir, exist_ok=True)
     snapshot_paths = []
     
     print(f"  Writing {actual_snaps} snapshots to disk...")
     for i in range(actual_snaps):
-        T_3d = np.full((res, res, res), np.nan, dtype=np.float32)
-        m_3d = np.full((res, res, res), np.nan, dtype=np.float32)
-        fill_3d = np.full((res, res, res), np.nan, dtype=np.float32)
+        # Use the new non-cubic dimensions
+        T_3d = np.full((grid.res_x, grid.res_y, grid.res_z), np.nan, dtype=np.float32)
+        m_3d = np.full((grid.res_x, grid.res_y, grid.res_z), np.nan, dtype=np.float32)
+        fill_3d = np.full((grid.res_x, grid.res_y, grid.res_z), np.nan, dtype=np.float32)
         
         for c in range(grid.N):
             idx = grid.cell_coords[c]
@@ -22,7 +23,8 @@ def save_snapshots_3d(outdir, snapshots_T, snapshots_m, snapshots_fill, actual_s
             
         t_hr = i * snapshot_interval_hr
         filename = os.path.join(snap_dir, f"snap_{t_hr:06.2f}.npz")
-        np.savez_compressed(filename, T=T_3d, m=m_3d, fill=fill_3d, t_hr=t_hr, res=res)
+        np.savez_compressed(filename, T=T_3d, m=m_3d, fill=fill_3d, t_hr=t_hr, 
+                            res_x=grid.res_x, res_y=grid.res_y, res_z=grid.res_z)
         snapshot_paths.append(filename)
     return snapshot_paths
 

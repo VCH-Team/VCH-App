@@ -65,26 +65,34 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
     
     initial_fill_kernel(m, H, ngrid.V, ngrid.col_cells, ngrid.col_start, ngrid.col_len, f, rho_start, h_start)
     
+        # Pre-compact (large dt)
     dummy_T = np.zeros(N_cells); dummy_rho = np.zeros(N_cells); dummy_k = np.zeros(N_cells)
-    dummy_mu = np.zeros(N_cells); dummy_fs = np.zeros(N_cells); dummy_cp = np.zeros(N_cells)
+    dummy_mu = np.zeros(N_cells); dummy_fs = np.zeros(N_cells); dummy_cp_eff = np.zeros(N_cells)
+    dummy_cp_sens = np.zeros(N_cells) # <--- ADD THIS
     dummy_cap = np.zeros(N_cells); dummy_ff = np.zeros(N_cells)
     
-    derive_properties_kernel(m, H, ngrid.V, h_start, nm, dummy_T, dummy_rho, dummy_k, dummy_mu, dummy_fs, dummy_cp, dummy_cap, dummy_ff)
+    derive_properties_kernel(
+        m, H, ngrid.V, h_start, nm, 
+        dummy_T, dummy_rho, dummy_k, dummy_mu, dummy_fs, 
+        dummy_cp_eff, dummy_cp_sens, dummy_cap, dummy_ff # <--- PASS IT HERE
+    )
     settle_kernel(m, H, ngrid.V, dummy_rho, dummy_fs, ngrid.col_cells, ngrid.col_start, ngrid.col_len, ncfg.fs_lock, 100.0, ncfg.dz)
     
     # 5. Save run_info.json
     dx = (2 * cfg["r_inner"]) / cfg["res"] if cfg["tank_shape"] == "cylinder" else cfg["tank_length"] / cfg["res"]
     dz = cfg["tank_height"] / cfg["res"]
     
+    # 5. Save run_info.json
     run_info = {
         "drain_coords": grid.cell_coords[drain_idx].tolist() if drain_idx >= 0 else None,
         "fill_coords": grid.cell_coords[fill_idx].tolist() if fill_idx >= 0 else None,
-        "res": cfg["res"], "shape": cfg["tank_shape"], "r_inner": cfg["r_inner"], 
+        "res_x": grid.res_x, "res_y": grid.res_y, "res_z": grid.res_z,
+        "dx": grid.dx, "dy": grid.dy, "dz": grid.dz,
+        "shape": cfg["tank_shape"], "r_inner": cfg["r_inner"], 
         "tank_length": cfg["tank_length"], "tank_width": cfg["tank_width"],
         "tank_height": cfg["tank_height"], "t_wall": cfg["t_wall"], "t_ins": cfg["t_ins"], 
         "max_tank_mass": ncfg.max_tank_mass,
         "slice_angles": slice_angles,
-        "dx": dx, "dz": dz,
         "coil_weight_kg": weight_tube, "coil_length_m": L_total
     }
     with open(os.path.join(outdir, "run_info.json"), "w") as f_out:
@@ -133,11 +141,16 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         monitor_thread.start()
         
         try:
-            actual_snaps, m_in, m_out = mega_kernel_cycle(
+            # CHANGE THIS LINE to catch the new return values
+            actual_snaps, m_in, m_out, m_resid, H_resid = mega_kernel_cycle(
                 ncfg, ngrid, nm, m, H,
                 snapshots_T, snapshots_m, snapshots_fill, max_snaps,
                 cycle_summary_row, progress_tracker, cancel_flag
             )
+            
+            # ADD THIS PRINT AFTER the kernel finishes
+            if abs(m_resid) > 1e-4:
+                print(f"  [WARNING] Mass Residual: {m_resid:.4f} kg | Energy Residual: {H_resid:.4e} J")
         except KeyboardInterrupt:
             print("\n\n  [Stop Requested] Saving state and aborting cycle...")
             cancel_flag[0] = 1
@@ -155,9 +168,10 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         print(f"  Cycle finished in {time.time() - t0:.1f} seconds.")
         
         # Save Data
-        file_writer.save_snapshots_3d(cycle_dir, snapshots_T[:actual_snaps], snapshots_m[:actual_snaps], snapshots_fill[:actual_snaps], 
-                                      actual_snaps, grid, cfg["res"], cfg["dt_sec"], cfg["snapshot_interval_hr"])
-        
+        file_writer.save_snapshots_3d(
+            cycle_dir, snapshots_T[:actual_snaps], snapshots_m[:actual_snaps], snapshots_fill[:actual_snaps], 
+            actual_snaps, grid, cfg["dt_sec"], cfg["snapshot_interval_hr"]
+        )
         file_writer.save_results_json(cycle_dir, np.array([cycle_summary_row]), 1, ncfg, np.sum(m), m_out, m_in)
         
         all_cycle_metrics.append(cycle_summary_row)

@@ -58,7 +58,6 @@ def save_combined_chart(cfg, mat_tank, min_R, max_R, num_R, max_turns, outdir):
     return radii
 
 def get_user_inputs(outdir):
-    """Runs the entire CLI and returns the finalized configuration and materials."""
     db_loader.check_and_build_cache()
     thresh_liq, thresh_visc = db_loader.load_settings()
     
@@ -73,7 +72,10 @@ def get_user_inputs(outdir):
     L_tank = ask("Tank Length (m)", 1.0) if shape == "cuboid" else 0.0
     W_tank = ask("Tank Width (m)", 1.0) if shape == "cuboid" else 0.0
     tank_height = ask("Tank Height (m)", 1.0)
-    res = ask("Grid Resolution (10-50)", 20, int)
+    
+    # UPDATED: Cell Size instead of Resolution
+    cell_size_cm = ask("Target Cell Size (cm)", 5.0)
+    
     t_wall = ask("Wall Thickness (m)", 0.005)
     
     print("\n--- 2D Slice Visualization ---")
@@ -109,14 +111,19 @@ def get_user_inputs(outdir):
             except ValueError:
                 print("  Please enter numbers 1-3.")
 
+    # UPDATED: Only ask for side insulation if they say yes
     has_ins = input("Add side insulation? (y/n) [n]: ").strip().lower() == 'y'
-    t_ins, k_ins = (ask("  Side Insulation Thickness (m)", 0.05), 0.04)
-    if has_ins: k_ins = pick_material("Insulation", "insulation")[0]["k_grid"][0]
+    t_ins = 0.0
+    k_ins = 0.04
+    if has_ins:
+        t_ins = ask("  Side Insulation Thickness (m)", 0.05)
+        k_ins = pick_material("Insulation", "insulation")[0]["k_grid"][0]
     
     print("\n--- Tank Mounting ---")
     mount_choice = input("Mounting [1] Elevated on legs, [2] Directly on ground [1]: ").strip() or "1"
     grounded = (mount_choice == "2")
     
+    # UPDATED: Only ask for bottom insulation if they say yes
     has_ins_bottom = input("Add bottom insulation? (y/n) [n]: ").strip().lower() == 'y'
     t_ins_bottom = 0.0
     if has_ins_bottom:
@@ -216,13 +223,13 @@ def get_user_inputs(outdir):
     t_window_hr, t_cooldown_hr = ask("Heating Phase (hrs)", 12.0), ask("Cooling Phase (hrs)", 12.0)
     N_cycles, dt_sec = ask("Number of Cycles", 1, int), ask("Time Step (s)", 1.0)
     
-    # NEW: Snapshot interval in minutes
     max_snap_min = (t_window_hr + t_cooldown_hr) * 60.0
     snapshot_interval_min = ask("Snapshot Interval (minutes)", 10.0)
     snapshot_interval_hr = snapshot_interval_min / 60.0
 
     cfg = config.with_defaults({
-        "tank_shape": shape, "r_inner": r_inner, "tank_height": tank_height, "res": res, "tank_length": L_tank, "tank_width": W_tank,
+        "tank_shape": shape, "r_inner": r_inner, "tank_height": tank_height, "tank_length": L_tank, "tank_width": W_tank,
+        "cell_size_m": cell_size_cm / 100.0,  # <--- UPDATED: Pass cell size in meters
         "d_in": d_in, "d_out": d_out, "t_wall": t_wall, "t_ins": t_ins, "k_ins": k_ins, "h_air": h_air, "M_fluid": M_fluid,
         "T_start": T_start, "T_amb_low": T_amb_low, "T_target": T_target, "T_amb_mid": T_amb_mid, "T_water_in": T_water_in, "flow_m3h": flow_m3h,
         "dt_sec": dt_sec, "t_window_hr": t_window_hr, "t_cooldown_hr": t_cooldown_hr, "N_cycles": N_cycles,
@@ -264,10 +271,9 @@ def get_user_inputs(outdir):
     R_coil = ask("Chosen Coil Radius (m)", radii_tested[-1])
     n_turns = ask("Chosen Coil Turns", max_turns // 2, int)
     
-    # NEW: Coil Metrics Calculation
     L_total = 2.0 * np.pi * R_coil * n_turns
     vol_tube = (np.pi / 4.0) * (d_out**2 - d_in**2) * L_total
-    rho_tube = float(mat_tube["rho_grid"][0]) # Metal density
+    rho_tube = float(mat_tube["rho_grid"][0])
     weight_tube = vol_tube * rho_tube
     
     print(f"\n[Coil Metrics]")

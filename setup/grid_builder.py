@@ -7,7 +7,6 @@ class Grid:
     @classmethod
     def build_3d(cls, cfg):
         g = cls()
-        res = int(cfg["res"])
         tank_height = float(cfg["tank_height"])
         shape = cfg.get("tank_shape", "cylinder")
         
@@ -20,18 +19,35 @@ class Grid:
             L_x = float(cfg["tank_length"])
             L_y = float(cfg["tank_width"])
 
-        dx = L_x / res
-        dy = L_y / res
-        dz = tank_height / res
+        # Calculate physical cell size (default to 5cm if not provided)
+        cell_size_m = float(cfg.get("cell_size_m", 0.05))
+        
+        # Calculate number of cells in each dimension
+        res_x = max(1, int(np.ceil(L_x / cell_size_m)))
+        res_y = max(1, int(np.ceil(L_y / cell_size_m)))
+        res_z = max(1, int(np.ceil(tank_height / cell_size_m)))
+        
+        # Recalculate exact physical dimensions of each cell to perfectly fit the tank
+        dx = L_x / res_x
+        dy = L_y / res_y
+        dz = tank_height / res_z
 
-        index_map = np.full((res, res, res), -1, dtype=np.int32)
+        # Store geometric data on the grid object
+        g.res_x = res_x
+        g.res_y = res_y
+        g.res_z = res_z
+        g.dx = dx
+        g.dy = dy
+        g.dz = dz
+
+        index_map = np.full((res_x, res_y, res_z), -1, dtype=np.int32)
         xc_list, yc_list, zc_list, V_list = [], [], [], []
         cell_coords_list = []
         
         c = 0
-        for k in range(res):
-            for j in range(res):
-                for i in range(res):
+        for k in range(res_z):
+            for j in range(res_y):
+                for i in range(res_x):
                     xc = -L_x/2.0 + (i + 0.5) * dx
                     yc = -L_y/2.0 + (j + 0.5) * dy
                     zc = (k + 0.5) * dz
@@ -67,9 +83,9 @@ class Grid:
         A_y = dx * dz
         A_z = dx * dy
         
-        for k in range(res):
-            for j in range(res):
-                for i in range(res):
+        for k in range(res_z):
+            for j in range(res_y):
+                for i in range(res_x):
                     c = index_map[i, j, k]
                     if c < 0:
                         continue
@@ -78,7 +94,7 @@ class Grid:
                         g.nbr[c, 0] = index_map[i-1, j, k]
                         g.A_face[c, 0] = A_x
                         g.d_face[c, 0] = dx
-                    if i < res - 1 and index_map[i+1, j, k] >= 0:
+                    if i < res_x - 1 and index_map[i+1, j, k] >= 0:
                         g.nbr[c, 1] = index_map[i+1, j, k]
                         g.A_face[c, 1] = A_x
                         g.d_face[c, 1] = dx
@@ -87,7 +103,7 @@ class Grid:
                         g.nbr[c, 2] = index_map[i, j-1, k]
                         g.A_face[c, 2] = A_y
                         g.d_face[c, 2] = dy
-                    if j < res - 1 and index_map[i, j+1, k] >= 0:
+                    if j < res_y - 1 and index_map[i, j+1, k] >= 0:
                         g.nbr[c, 3] = index_map[i, j+1, k]
                         g.A_face[c, 3] = A_y
                         g.d_face[c, 3] = dy
@@ -96,15 +112,15 @@ class Grid:
                         g.nbr[c, 4] = index_map[i, j, k-1]
                         g.A_face[c, 4] = A_z
                         g.d_face[c, 4] = dz
-                    if k < res - 1 and index_map[i, j, k+1] >= 0:
+                    if k < res_z - 1 and index_map[i, j, k+1] >= 0:
                         g.nbr[c, 5] = index_map[i, j, k+1]
                         g.A_face[c, 5] = A_z
                         g.d_face[c, 5] = dz
 
         g.col_start, g.col_len, g.col_cells = [], [], []
-        for j in range(res):
-            for i in range(res):
-                col_c = [index_map[i, j, k] for k in range(res) if index_map[i, j, k] >= 0]
+        for j in range(res_y):
+            for i in range(res_x):
+                col_c = [index_map[i, j, k] for k in range(res_z) if index_map[i, j, k] >= 0]
                 if col_c:
                     g.col_start.append(len(g.col_cells))
                     g.col_len.append(len(col_c))
@@ -114,22 +130,18 @@ class Grid:
         g.col_len = np.array(g.col_len, dtype=np.int32)
         g.col_cells = np.array(g.col_cells, dtype=np.int32)
         
-        # =====================================================================
-        # NEW: CALCULATE SIDE AND BOTTOM AREAS WITH GEOMETRIC CORRECTION
-        # =====================================================================
+        # --- CALCULATE SIDE AND BOTTOM AREAS WITH GEOMETRIC CORRECTION ---
         g.side_area = np.zeros(g.N)
         g.bottom_area = np.zeros(g.N)
         
-        # 1. Calculate raw staircase areas
         for c in range(g.N):
-            for f in range(4): # Lateral faces (0, 1, 2, 3)
+            for f in range(4): 
                 if g.nbr[c, f] == -1:
                     g.side_area[c] += g.A_face[c, f]
             
-            if g.nbr[c, 4] == -1: # Bottom face (4)
+            if g.nbr[c, 4] == -1: 
                 g.bottom_area[c] += g.A_face[c, 4]
                 
-        # 2. Calculate True Geometric Areas based on user inputs
         if shape == "cylinder":
             True_Side_Area = 2.0 * np.pi * r_inner * tank_height
             True_Bottom_Area = np.pi * r_inner**2
@@ -137,20 +149,18 @@ class Grid:
             True_Side_Area = 2.0 * (L_x + L_y) * tank_height
             True_Bottom_Area = L_x * L_y
             
-        # 3. Calculate Correction Factors
         sum_side_raw = np.sum(g.side_area)
         sum_bottom_raw = np.sum(g.bottom_area)
         
         corr_side = (True_Side_Area / sum_side_raw) if sum_side_raw > 1e-9 else 1.0
         corr_bottom = (True_Bottom_Area / sum_bottom_raw) if sum_bottom_raw > 1e-9 else 1.0
         
-        # 4. Apply Correction Factors
         g.side_area *= corr_side
         g.bottom_area *= corr_bottom
         
-        # Print the correction for diagnostics
-        print(f"  [Grid] True Side Area: {True_Side_Area:.2f} m² | Correction Factor: {corr_side:.4f}")
-        print(f"  [Grid] True Bottom Area: {True_Bottom_Area:.2f} m² | Correction Factor: {corr_bottom:.4f}")
+        print(f"  [Grid] Dimensions: {res_x} x {res_y} x {res_z} cells")
+        print(f"  [Grid] Cell size: dx={dx*100:.2f}cm, dy={dy*100:.2f}cm, dz={dz*100:.2f}cm")
+        print(f"  [Grid] Total cells: {g.N:,}")
 
         return g
 
@@ -162,8 +172,22 @@ def build_coil_segments(grid, cfg, R_coil, n_turns):
     d_in, d_out, H = cfg["d_in"], cfg["d_out"], cfg["L_avail"]
     r_lo, r_hi = R_coil - d_out/2.0, R_coil + d_out/2.0
     z_lo, z_hi = cfg["coil_clearance_bottom"], cfg["coil_clearance_bottom"] + cfg["L_avail"]
+    
     cells = [c for c in range(grid.N) if r_lo <= np.sqrt(grid.xc[c]**2 + grid.yc[c]**2) <= r_hi and z_lo <= grid.zc[c] <= z_hi]
     cells = np.array(cells)
-    cells = cells[np.argsort(grid.zc[cells])]
+    
+    if len(cells) == 0:
+        raise ValueError("No grid cells found inside the coil band. Try increasing grid resolution.")
+        
+    # --- B7 FIX: Sort by Helical Arclength ---
+    # 1. Calculate the angle (0 to 2pi)
+    angles = np.arctan2(grid.yc[cells], grid.xc[cells])
+    angles = np.where(angles < 0, angles + 2*np.pi, angles)
+    
+    # 2. Sort by Z first (primary), then by angle (secondary)
+    # np.lexsort uses the last key as primary
+    sort_indices = np.lexsort((angles, grid.zc[cells]))
+    cells = cells[sort_indices]
+    
     L_total = 2.0 * np.pi * R_coil * n_turns
     return CoilSegments(cells, (np.pi * d_out * L_total) / len(cells), d_in, d_out, R_coil)

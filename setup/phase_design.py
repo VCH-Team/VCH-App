@@ -25,10 +25,12 @@ def _march_coil(T_tank, T_coil_in, m_dot, L_total, R_coil, d_in, d_out, R_f_out,
     H_solid = float(np.interp(T_ms, mat["T_grid"], mat["H_grid"])) if has_melt else 0.0
     H_liquid = float(np.interp(T_me, mat["T_grid"], mat["H_grid"])) if has_melt else 0.0
     
+    # FIX: Added beta_grid here
     nm = NumbaMaterial(
         T_grid=mat["T_grid"], H_grid=mat["H_grid"], rho_grid=mat["rho_grid"],
         k_grid=mat["k_grid"], mu_grid=mat["mu_grid"], cp_eff_grid=mat["cp_eff_grid"],
-        cp_sens_grid=mat["cp_sens_grid"], T_ms=T_ms, T_me=T_me,
+        cp_sens_grid=mat["cp_sens_grid"], beta_grid=mat["beta_grid"],
+        T_ms=T_ms, T_me=T_me,
         H_solid=H_solid, H_liquid=H_liquid, has_melt=has_melt
     )
     
