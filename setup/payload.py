@@ -19,6 +19,7 @@ class NumbaConfig(NamedTuple):
     tank_shape_id: int          # 0 = cylinder, 1 = cuboid
     res: int
     dz: float
+    tank_height: float          # <--- ADDED for drop.py
     T_start: float              
     
     # Physics Constants
@@ -50,14 +51,16 @@ class NumbaConfig(NamedTuple):
     drain_cell_idx: int
     drain_col_idx: int
     drain_area: float
-    pump_head_m: float           # <--- CHANGED
-    motor_power_kw: float        # <--- NEW
+    pump_head_m: float           
+    motor_power_kw: float        
     drain_max_flow_m3h: float
     pump_max_visc: float         
     pump_chunk_tol_pct: float  
     
     simulate_fill: bool
     fill_cell_idx: int
+    fill_col_idx: int        
+    fill_area: float 
     fill_mdot: float            # Volumetric flow (m3/s)
     fill_T: float
     fill_max_flow_m3h: float
@@ -81,8 +84,8 @@ class NumbaGrid(NamedTuple):
     nbr: np.ndarray            
     A_face: np.ndarray         
     d_face: np.ndarray         
-    side_area: np.ndarray      # <--- REPLACED wall_area
-    bottom_area: np.ndarray    # <--- ADDED bottom_area
+    side_area: np.ndarray      
+    bottom_area: np.ndarray    
     xc: np.ndarray             
     yc: np.ndarray             
     zc: np.ndarray             
@@ -113,7 +116,7 @@ class NumbaMaterial(NamedTuple):
 # 2. FACTORY FUNCTION
 # ==============================================================================
 
-def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dict, grid, coil_segs, drain_idx, fill_idx, drain_col_idx):
+def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dict, grid, coil_segs, drain_idx, fill_idx, drain_col_idx, fill_col_idx):
     """
     Takes the raw Python dictionaries and objects, and compiles them into
     rigid NamedTuples that Numba can read at C-speed.
@@ -135,7 +138,7 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         mu_grid=np.ascontiguousarray(mat_tank_dict["mu_grid"], dtype=np.float64),
         cp_eff_grid=np.ascontiguousarray(mat_tank_dict["cp_eff_grid"], dtype=np.float64),
         cp_sens_grid=np.ascontiguousarray(mat_tank_dict["cp_sens_grid"], dtype=np.float64),
-        beta_grid=np.ascontiguousarray(mat_tank_dict["beta_grid"], dtype=np.float64), # <--- ADD THIS
+        beta_grid=np.ascontiguousarray(mat_tank_dict["beta_grid"], dtype=np.float64),
         T_ms=T_ms, T_me=T_me,
         H_solid=H_solid, H_liquid=H_liquid,
         has_melt=has_melt
@@ -168,6 +171,7 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
     
     drain_area = float(np.pi * (cfg.get("drain_diameter", 0.0) / 2.0)**2) if cfg.get("simulate_drain", False) else 0.0
     fill_mdot = float(cfg.get("fill_flow_m3h", 0.0)) / 3600.0 if cfg.get("simulate_fill", False) else 0.0
+    fill_area = float(np.pi * (cfg.get("fill_diameter", 0.05) / 2.0)**2) if cfg.get("simulate_fill", False) else 0.0
 
     ncfg = NumbaConfig(
         dt_sec=float(cfg["dt_sec"]),
@@ -179,8 +183,9 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         K_settle=float(cfg["K_settle"]),
         K_flatten=float(cfg["K_flatten"]),
         tank_shape_id=shape_id,
-        res=int(grid.res_x),                # <--- UPDATED
-        dz=float(grid.dz),                  # <--- UPDATED
+        res=int(grid.res_x),                
+        dz=float(grid.dz),                  
+        tank_height=float(cfg["tank_height"]),  # <--- ADDED
         T_start=float(cfg["T_start"]), 
         
         T_amb_mid=float(cfg["T_amb_mid"]),
@@ -192,8 +197,6 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         dT_natural=float(cfg["dT_natural"]),
         thresh_liq=float(cfg["thresh_liq"]),
         thresh_visc=float(cfg["thresh_visc"]),
-        
-        # ... (rest of the ncfg remains the same)
         
         m_dot_coil=m_dot_coil,
         rho_c=rho_c,
@@ -207,7 +210,7 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         R_f_out=float(cfg["R_f_out"]),
         T_water_in=T_in,
         
-        # --- DRAIN & PUMP SECTION (Make sure there's only ONE of each here) ---
+        # --- DRAIN & PUMP SECTION ---
         simulate_drain=bool(cfg.get("simulate_drain", False)),
         drain_cell_idx=int(drain_idx),
         drain_col_idx=int(drain_col_idx),
@@ -217,10 +220,12 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         drain_max_flow_m3h=float(cfg.get("drain_max_flow_m3h", 0.0)),
         pump_max_visc=float(cfg.get("pump_max_visc", 0.5)),
         pump_chunk_tol_pct=float(cfg.get("pump_chunk_tol_pct", 0.0)),
-        # ------------------------------------------------------------------------
         
+        # --- FILL SECTION ---
         simulate_fill=bool(cfg.get("simulate_fill", False)),
         fill_cell_idx=int(fill_idx),
+        fill_col_idx=int(fill_col_idx), 
+        fill_area=fill_area,
         fill_mdot=fill_mdot,
         fill_T=float(cfg.get("fill_T", cfg["T_amb_mid"])),
         fill_max_flow_m3h=float(cfg.get("fill_max_flow_m3h", 0.0)),
@@ -228,11 +233,13 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         fill_radius_cells=fill_radius_cells, 
         max_tank_mass=max_tank_mass,  
         
+        # --- GROUND / BOUNDARY ---
         grounded=bool(cfg.get("grounded", False)),
         t_ins_bottom=float(cfg.get("t_ins_bottom", 0.0)),
         k_ground=float(cfg.get("k_ground", 1.0)),
         L_ground=float(cfg.get("L_ground", 1.0)),
         
+        # --- WALL MATERIAL ---
         T_wall_arr=np.ascontiguousarray(mat_wall_dict["T_grid"], dtype=np.float64),
         k_wall_arr=np.ascontiguousarray(mat_wall_dict["k_grid"], dtype=np.float64)
     )
@@ -244,8 +251,8 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         nbr=np.ascontiguousarray(grid.nbr, dtype=np.int32),
         A_face=np.ascontiguousarray(grid.A_face, dtype=np.float64),
         d_face=np.ascontiguousarray(grid.d_face, dtype=np.float64),
-        side_area=np.ascontiguousarray(grid.side_area, dtype=np.float64),     # <--- NEW
-        bottom_area=np.ascontiguousarray(grid.bottom_area, dtype=np.float64), # <--- NEW
+        side_area=np.ascontiguousarray(grid.side_area, dtype=np.float64),     
+        bottom_area=np.ascontiguousarray(grid.bottom_area, dtype=np.float64), 
         xc=np.ascontiguousarray(grid.xc, dtype=np.float64),
         yc=np.ascontiguousarray(grid.yc, dtype=np.float64),
         zc=np.ascontiguousarray(grid.zc, dtype=np.float64),
