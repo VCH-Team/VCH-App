@@ -27,15 +27,15 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
     N = m.shape[0]
     g = 9.81
     
-    dm = np.zeros(N)
-    dH = np.zeros(N)
+    dm_in = np.zeros(N)
+    dH_in = np.zeros(N)
+    dm_out = np.zeros(N)
+    dH_out = np.zeros(N)
     
-    # PASS 1: Calculate local flux (Thread-Safe!)
     for c in prange(N):
         if fs[c] >= fs_lock:
             continue
             
-        # Mid-air check
         if nbr[c, 4] >= 0 and m[nbr[c, 4]] <= 1e-9:
             continue
             
@@ -46,7 +46,6 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 
             local_dh = col_height[c] - col_height[n]
             
-            # Case A: Cell c is HIGHER (Donor)
             if local_dh > 1e-6:
                 if m[c] <= 1e-9 or m[n] >= V[n] * rho[n] - 1e-9:
                     continue
@@ -61,10 +60,9 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 
                 if moved > 1e-9:
                     h_spec = H[c] / m[c]
-                    dm[c] -= moved
-                    dH[c] -= moved * h_spec
+                    dm_out[c] += moved
+                    dH_out[c] += moved * h_spec
                     
-            # Case B: Cell c is LOWER (Receiver)
             elif local_dh < -1e-6:
                 if m[n] <= 1e-9 or m[c] >= V[c] * rho[c] - 1e-9:
                     continue
@@ -79,16 +77,15 @@ def _flatten_kernel(m, H, V, rho, mu, fs, nbr, col_height, dz, dt, fs_lock):
                 
                 if moved > 1e-9:
                     h_spec = H[n] / m[n]
-                    dm[c] += moved
-                    dH[c] += moved * h_spec
+                    dm_in[c] += moved
+                    dH_in[c] += moved * h_spec
 
-    # PASS 2: Apply fluxes safely
     for c in prange(N):
-        m[c] = max(0.0, m[c] + dm[c])
-        H[c] = max(0.0, H[c] + dH[c])
+        m[c] += dm_in[c] - dm_out[c]
+        H[c] += dH_in[c] - dH_out[c]
 
 @njit(cache=True)
-def apply_flatten(m, H, rho, mu, fs, ncfg, ngrid):
+def apply_flatten(m, H, rho, mu, fs, ncfg, ngrid, dt):
     col_height = np.zeros(ngrid.N)
     _compute_column_heights(m, rho, ngrid.V, ncfg.dz, ngrid.col_cells, ngrid.col_start, ngrid.col_len, col_height)
-    _flatten_kernel(m, H, ngrid.V, rho, mu, fs, ngrid.nbr, col_height, ncfg.dz, ncfg.dt_sec, ncfg.fs_lock)
+    _flatten_kernel(m, H, ngrid.V, rho, mu, fs, ngrid.nbr, col_height, ncfg.dz, dt, ncfg.fs_lock)

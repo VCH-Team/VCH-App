@@ -48,6 +48,7 @@ def apply_fill(m, H, mat, ncfg, ngrid):
     for i in range(num_targets):
         target = target_cells[i]
         
+        # Strictly cap by physical capacity
         cap = ngrid.V[target] * rho_fill
         space = max(0.0, cap - m[target])
         

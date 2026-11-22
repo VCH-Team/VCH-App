@@ -101,15 +101,14 @@ def calc_U_bottom(T_avg_wall, T_wall_arr, k_wall_arr, h_air, t_wall,
         return 1.0 / (R_conv + R_wall + R_ins)
 
 @njit(inline='always')
-def nu_eff_buoyancy(Ra):
+def nu_eff_buoyancy(Ra, Pr):
     """
     Effective Nusselt number for natural convection on a vertical face.
     """
     if Ra < 1e4:
         return 1.0  # Pure conduction
         
-    Pr = 5.0  # Approximate Prandtl number
-    nu_lam = 0.68 + (0.67 * Ra**(1/4)) / (1 + (0.492/Pr)**(9/16))**(4/9)
+    nu_lam = 0.68 + (0.67 * Ra**(1/4)) / (1 + (0.492/max(0.1, Pr))**(9/16))**(4/9)
     
     # Cap to prevent explicit time-stepping instability
     return min(100.0, max(1.0, nu_lam))

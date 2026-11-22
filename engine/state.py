@@ -29,7 +29,7 @@ def initial_fill_kernel(m, H, V, col_cells, col_start, col_len, f, rho_start, h_
             H[c] = m[c] * h_start
 
 @njit(parallel=True, cache=True)
-def derive_properties_kernel(m, H, V, h_empty, mat, T, rho, k, mu, fs, cp_eff, cap, fill):
+def derive_properties_kernel(m, H, V, h_empty, mat, T, rho, k, mu, fs, cp_eff, cp_sens, cap, fill):
     for c in prange(m.shape[0]):
         h = H[c] / m[c] if m[c] > M_EPS else h_empty
         Tc = np.interp(h, mat.H_grid, mat.T_grid)
@@ -39,6 +39,7 @@ def derive_properties_kernel(m, H, V, h_empty, mat, T, rho, k, mu, fs, cp_eff, c
         k[c] = np.interp(Tc, mat.T_grid, mat.k_grid)
         mu[c] = np.interp(Tc, mat.T_grid, mat.mu_grid)
         cp_eff[c] = np.interp(Tc, mat.T_grid, mat.cp_eff_grid)
+        cp_sens[c] = np.interp(Tc, mat.T_grid, mat.cp_sens_grid) # <--- ADD THIS
         
         if mat.has_melt and mat.H_liquid > mat.H_solid:
             liq = (h - mat.H_solid) / (mat.H_liquid - mat.H_solid)

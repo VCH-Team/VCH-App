@@ -65,11 +65,17 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
     
     initial_fill_kernel(m, H, ngrid.V, ngrid.col_cells, ngrid.col_start, ngrid.col_len, f, rho_start, h_start)
     
+        # Pre-compact (large dt)
     dummy_T = np.zeros(N_cells); dummy_rho = np.zeros(N_cells); dummy_k = np.zeros(N_cells)
-    dummy_mu = np.zeros(N_cells); dummy_fs = np.zeros(N_cells); dummy_cp = np.zeros(N_cells)
+    dummy_mu = np.zeros(N_cells); dummy_fs = np.zeros(N_cells); dummy_cp_eff = np.zeros(N_cells)
+    dummy_cp_sens = np.zeros(N_cells) # <--- ADD THIS
     dummy_cap = np.zeros(N_cells); dummy_ff = np.zeros(N_cells)
     
-    derive_properties_kernel(m, H, ngrid.V, h_start, nm, dummy_T, dummy_rho, dummy_k, dummy_mu, dummy_fs, dummy_cp, dummy_cap, dummy_ff)
+    derive_properties_kernel(
+        m, H, ngrid.V, h_start, nm, 
+        dummy_T, dummy_rho, dummy_k, dummy_mu, dummy_fs, 
+        dummy_cp_eff, dummy_cp_sens, dummy_cap, dummy_ff # <--- PASS IT HERE
+    )
     settle_kernel(m, H, ngrid.V, dummy_rho, dummy_fs, ngrid.col_cells, ngrid.col_start, ngrid.col_len, ncfg.fs_lock, 100.0, ncfg.dz)
     
     # 5. Save run_info.json
@@ -135,11 +141,16 @@ def run_simulation(cfg, mat_tank, mat_coil, mat_tube, mat_wall, R_coil, n_turns,
         monitor_thread.start()
         
         try:
-            actual_snaps, m_in, m_out = mega_kernel_cycle(
+            # CHANGE THIS LINE to catch the new return values
+            actual_snaps, m_in, m_out, m_resid, H_resid = mega_kernel_cycle(
                 ncfg, ngrid, nm, m, H,
                 snapshots_T, snapshots_m, snapshots_fill, max_snaps,
                 cycle_summary_row, progress_tracker, cancel_flag
             )
+            
+            # ADD THIS PRINT AFTER the kernel finishes
+            if abs(m_resid) > 1e-4:
+                print(f"  [WARNING] Mass Residual: {m_resid:.4f} kg | Energy Residual: {H_resid:.4e} J")
         except KeyboardInterrupt:
             print("\n\n  [Stop Requested] Saving state and aborting cycle...")
             cancel_flag[0] = 1

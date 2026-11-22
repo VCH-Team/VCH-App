@@ -175,9 +175,19 @@ def build_coil_segments(grid, cfg, R_coil, n_turns):
     
     cells = [c for c in range(grid.N) if r_lo <= np.sqrt(grid.xc[c]**2 + grid.yc[c]**2) <= r_hi and z_lo <= grid.zc[c] <= z_hi]
     cells = np.array(cells)
+    
     if len(cells) == 0:
         raise ValueError("No grid cells found inside the coil band. Try increasing grid resolution.")
         
-    cells = cells[np.argsort(grid.zc[cells])]
+    # --- B7 FIX: Sort by Helical Arclength ---
+    # 1. Calculate the angle (0 to 2pi)
+    angles = np.arctan2(grid.yc[cells], grid.xc[cells])
+    angles = np.where(angles < 0, angles + 2*np.pi, angles)
+    
+    # 2. Sort by Z first (primary), then by angle (secondary)
+    # np.lexsort uses the last key as primary
+    sort_indices = np.lexsort((angles, grid.zc[cells]))
+    cells = cells[sort_indices]
+    
     L_total = 2.0 * np.pi * R_coil * n_turns
     return CoilSegments(cells, (np.pi * d_out * L_total) / len(cells), d_in, d_out, R_coil)

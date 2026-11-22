@@ -101,6 +101,7 @@ class NumbaMaterial(NamedTuple):
     mu_grid: np.ndarray
     cp_eff_grid: np.ndarray
     cp_sens_grid: np.ndarray
+    beta_grid: np.ndarray  
     
     T_ms: float
     T_me: float
@@ -134,6 +135,7 @@ def build_payload(cfg, mat_tank_dict, mat_coil_dict, mat_tube_dict, mat_wall_dic
         mu_grid=np.ascontiguousarray(mat_tank_dict["mu_grid"], dtype=np.float64),
         cp_eff_grid=np.ascontiguousarray(mat_tank_dict["cp_eff_grid"], dtype=np.float64),
         cp_sens_grid=np.ascontiguousarray(mat_tank_dict["cp_sens_grid"], dtype=np.float64),
+        beta_grid=np.ascontiguousarray(mat_tank_dict["beta_grid"], dtype=np.float64), # <--- ADD THIS
         T_ms=T_ms, T_me=T_me,
         H_solid=H_solid, H_liquid=H_liquid,
         has_melt=has_melt
